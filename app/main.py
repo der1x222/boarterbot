@@ -18,6 +18,7 @@ async def main():
     await run_migration_file("migrations/003_verification.sql")
 
     bot = Bot(token=cfg.bot_token, parse_mode=ParseMode.HTML)
+    await bot.delete_webhook(drop_pending_updates=True)
     dp = Dispatcher()
 
     dp.include_router(start_router)
