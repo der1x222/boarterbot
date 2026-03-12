@@ -21,7 +21,21 @@ async def upsert_editor_profile(user_id: int, name: str, skills: str, price_from
 async def get_editor_profile(user_id: int) -> Optional[dict]:
     p = pool()
     async with p.acquire() as conn:
-        row = await conn.fetchrow("SELECT user_id,name,skills,price_from_minor,portfolio_url FROM editor_profiles WHERE user_id=$1", user_id)
+        row = await conn.fetchrow(
+            """
+            SELECT user_id,
+                   name,
+                   skills,
+                   price_from_minor,
+                   portfolio_url,
+                   verification_status,
+                   verification_note,
+                   test_submission
+            FROM editor_profiles
+            WHERE user_id=$1
+            """,
+            user_id,
+        )
     return dict(row) if row else None
 
 async def upsert_client_profile(user_id: int, name: str) -> None:
