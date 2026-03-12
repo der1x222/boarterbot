@@ -3,9 +3,15 @@ from aiogram.types import CallbackQuery
 import os
 
 from app.models import get_user_by_telegram_id
-from app.keyboards import kb_main_menu, kb_editor_menu, kb_support, kb_editor_orders_list
+from app.keyboards import (
+    kb_main_menu,
+    kb_editor_menu,
+    kb_support,
+    kb_editor_orders_list,
+    kb_editor_my_orders_list,
+)
 from app.profile_repo import get_editor_profile
-from app.order_repo import list_open_orders
+from app.order_repo import list_open_orders, list_orders_for_editor
 
 router = Router()
 
@@ -56,6 +62,24 @@ async def cb_menu(call: CallbackQuery):
             await call.message.answer(
                 "🔎 Доступные заказы:",
                 reply_markup=kb_editor_orders_list(orders),
+            )
+    elif call.data == "editor:my_proposals":
+        orders = await list_orders_for_editor(user.id, limit=10)
+        if not orders:
+            await call.message.answer("📬 Откликов пока нет.")
+        else:
+            await call.message.answer(
+                "📬 Мои отклики:",
+                reply_markup=kb_editor_my_orders_list(orders),
+            )
+    elif call.data == "editor:my_deals":
+        orders = await list_orders_for_editor(user.id, limit=10)
+        if not orders:
+            await call.message.answer("💼 Активных сделок пока нет.")
+        else:
+            await call.message.answer(
+                "💼 Мои сделки:",
+                reply_markup=kb_editor_my_orders_list(orders),
             )
     elif call.data.startswith("deal:chat"):
         await call.message.answer("💬 Чат: скоро будет.")

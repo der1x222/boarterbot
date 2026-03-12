@@ -167,6 +167,20 @@ def kb_editor_orders_list(orders: list[dict]) -> InlineKeyboardMarkup:
     b.adjust(*sizes)
     return b.as_markup()
 
+def kb_editor_my_orders_list(orders: list[dict]) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    for o in orders:
+        title = (o.get("title") or "-").strip()
+        if len(title) > 24:
+            title = title[:21] + "..."
+        b.button(text=f"📌 #{o['id']} {title}", callback_data=f"order:menu:{o['id']}")
+    b.button(text="🏠 Меню", callback_data="common:menu")
+    b.button(text="🆘 Поддержка", callback_data="common:support")
+    sizes = [1] * len(orders)
+    sizes.append(2)
+    b.adjust(*sizes)
+    return b.as_markup()
+
 def kb_deal_menu(order_id: int) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.button(text="💬 Чат", callback_data=f"deal:chat:{order_id}")

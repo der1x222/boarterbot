@@ -70,6 +70,22 @@ async def list_open_orders(limit: int = 10) -> list[dict]:
         )
     return [dict(r) for r in rows]
 
+async def list_orders_for_editor(user_id: int, limit: int = 10) -> list[dict]:
+    p = pool()
+    async with p.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, title, status, created_at
+            FROM orders
+            WHERE editor_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2
+            """,
+            user_id,
+            limit,
+        )
+    return [dict(r) for r in rows]
+
 async def get_order_by_id(order_id: int) -> dict | None:
     p = pool()
     async with p.acquire() as conn:

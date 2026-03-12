@@ -435,3 +435,27 @@ async def deal_change_submit(message: Message, state: FSMContext):
 
     await state.clear()
     await message.answer("Отправлено заказчику.")
+
+@router.callback_query(F.data.startswith("order:menu:"))
+async def order_menu_open(call: CallbackQuery):
+    user = await get_user_by_telegram_id(call.from_user.id)
+    if not user:
+        await call.answer("Нажмите /start", show_alert=True)
+        return
+    if user.role != "editor":
+        await call.answer("Доступно только монтажёрам.", show_alert=True)
+        return
+
+    try:
+        order_id = int(call.data.split(":")[-1])
+    except ValueError:
+        await call.answer("Некорректный номер.", show_alert=True)
+        return
+
+    order = await get_order_by_id(order_id)
+    if not order or order.get("editor_id") != user.id:
+        await call.answer("Заказ не найден.", show_alert=True)
+        return
+
+    await call.message.answer("Меню заказа:", reply_markup=kb_deal_menu(order_id))
+    await call.answer()
