@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 from app.models import get_user_by_telegram_id, upsert_user
 from app.keyboards import (
     kb_nav,
+    kb_nav_menu_help,
     kb_main_menu,
     kb_editor_menu,
     kb_edit_editor_menu,
@@ -225,7 +226,7 @@ async def edit_client_name_start(call: CallbackQuery, state: FSMContext):
         call,
         state,
         "Введите новое имя:",
-        reply_markup=kb_nav(cancel="edit:client_menu")
+        reply_markup=kb_nav_menu_help(back="edit:client_menu")
     )
 
 @router.message(EditClient.waiting_name)
@@ -256,7 +257,7 @@ async def edit_editor_name_start(call: CallbackQuery, state: FSMContext):
         call,
         state,
         "Введите новое имя:",
-        reply_markup=kb_nav(cancel="edit:editor_menu")
+        reply_markup=kb_nav_menu_help(back="edit:editor_menu")
     )
 
 @router.message(EditEditor.waiting_name)
@@ -291,7 +292,7 @@ async def edit_editor_skills_start(call: CallbackQuery, state: FSMContext):
         call,
         state,
         "Введите ваши специализации (Shorts, Reels):",
-        reply_markup=kb_nav(cancel="edit:editor_menu")
+        reply_markup=kb_nav_menu_help(back="edit:editor_menu")
     )
 
 @router.message(EditEditor.waiting_skills)
@@ -326,7 +327,7 @@ async def edit_editor_price_start(call: CallbackQuery, state: FSMContext):
         call,
         state,
         "Введите новую цену (число в $):",
-        reply_markup=kb_nav(cancel="edit:editor_menu")
+        reply_markup=kb_nav_menu_help(back="edit:editor_menu")
     )
 
 @router.message(EditEditor.waiting_price)
@@ -344,7 +345,7 @@ async def edit_editor_price_save(message: Message, state: FSMContext):
             message,
             state,
             "Цена должна быть числом. Например: 20",
-            reply_markup=kb_nav(cancel="edit:editor_menu")
+            reply_markup=kb_nav_menu_help(back="edit:editor_menu")
         )
         return
 
@@ -372,7 +373,7 @@ async def edit_editor_portfolio_start(call: CallbackQuery, state: FSMContext):
         call,
         state,
         "Введите новую ссылку на портфолио:",
-        reply_markup=kb_nav(cancel="edit:editor_menu")
+        reply_markup=kb_nav_menu_help(back="edit:editor_menu")
     )
 
 @router.message(EditEditor.waiting_portfolio)
