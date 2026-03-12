@@ -20,3 +20,8 @@ class EditEditor(StatesGroup):
 
 class EditClient(StatesGroup):
     waiting_name = State()
+
+class CreateOrder(StatesGroup):
+    waiting_title = State()
+    waiting_description = State()
+    waiting_budget = State()

@@ -290,7 +290,7 @@ async def edit_editor_skills_start(call: CallbackQuery, state: FSMContext):
     await send_clean_from_call(
         call,
         state,
-        "Введите новые специализации через запятую:",
+        "Введите ваши специализации (Shorts, Reels):",
         reply_markup=kb_nav(cancel="edit:editor_menu")
     )
 
@@ -325,7 +325,7 @@ async def edit_editor_price_start(call: CallbackQuery, state: FSMContext):
     await send_clean_from_call(
         call,
         state,
-        "Введите новую цену (число):",
+        "Введите новую цену (число в $):",
         reply_markup=kb_nav(cancel="edit:editor_menu")
     )
 

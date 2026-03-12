@@ -9,7 +9,7 @@ router = Router()
 
 @router.callback_query(
     F.data.startswith(("client:", "editor:", "mod:", "common:")) &
-    ~F.data.in_(["client:profile", "editor:profile"])
+    ~F.data.in_(["client:profile", "editor:profile", "client:create_order"])
 )
 async def cb_menu(call: CallbackQuery):
     user = await get_user_by_telegram_id(call.from_user.id)
