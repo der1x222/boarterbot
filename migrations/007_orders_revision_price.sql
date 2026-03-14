@@ -1,0 +1,2 @@
+ALTER TABLE orders
+  ADD COLUMN IF NOT EXISTS revision_price_minor BIGINT NOT NULL DEFAULT 0;

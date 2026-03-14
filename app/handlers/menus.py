@@ -89,6 +89,13 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
             "💳 Баланс: скоро будет.",
             reply_markup=await get_menu_markup(user),
         )
+    elif call.data == "common:vip":
+        await send_clean_from_call(
+            call,
+            state,
+            "💎 VIP: скоро будет.",
+            reply_markup=await get_menu_markup(user),
+        )
     elif call.data == "common:support":
         admin_username = os.getenv("ADMIN_USERNAME", "").strip()
         if admin_username:

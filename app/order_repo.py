@@ -5,6 +5,7 @@ async def create_order(
     title: str,
     description: str,
     budget_minor: int,
+    revision_price_minor: int,
     deadline_at,
     currency: str = "USD",
 ) -> int:
@@ -12,14 +13,15 @@ async def create_order(
     async with p.acquire() as conn:
         row = await conn.fetchrow(
             """
-            INSERT INTO orders (client_id, title, description, budget_minor, deadline_at, currency)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO orders (client_id, title, description, budget_minor, revision_price_minor, deadline_at, currency)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id
             """,
             client_id,
             title,
             description,
             budget_minor,
+            revision_price_minor,
             deadline_at,
             currency,
         )
@@ -46,7 +48,7 @@ async def get_order_for_client(order_id: int, user_id: int) -> dict | None:
     async with p.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT id, title, description, budget_minor, currency, status, created_at, deadline_at
+            SELECT id, title, description, budget_minor, revision_price_minor, currency, status, created_at, deadline_at, editor_id
             FROM orders
             WHERE id = $1 AND client_id = $2
             """,
@@ -91,13 +93,49 @@ async def get_order_by_id(order_id: int) -> dict | None:
     async with p.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT id, client_id, editor_id, title, status, deadline_at
+            SELECT id, client_id, editor_id, title, description, budget_minor, revision_price_minor, currency, status, created_at, deadline_at
             FROM orders
             WHERE id = $1
             """,
             order_id,
         )
     return dict(row) if row else None
+
+async def update_order_if_open(
+    order_id: int,
+    client_id: int,
+    title: str,
+    description: str,
+    budget_minor: int,
+    revision_price_minor: int,
+    deadline_at,
+) -> bool:
+    p = pool()
+    async with p.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE orders
+            SET title = $3,
+                description = $4,
+                budget_minor = $5,
+                revision_price_minor = $6,
+                deadline_at = $7,
+                updated_at = NOW()
+            WHERE id = $1
+              AND client_id = $2
+              AND status = 'open'
+              AND editor_id IS NULL
+            RETURNING id
+            """,
+            order_id,
+            client_id,
+            title,
+            description,
+            budget_minor,
+            revision_price_minor,
+            deadline_at,
+        )
+    return bool(row)
 
 async def accept_order(order_id: int, editor_id: int) -> bool:
     p = pool()
