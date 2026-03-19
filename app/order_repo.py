@@ -93,13 +93,80 @@ async def get_order_by_id(order_id: int) -> dict | None:
     async with p.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT id, client_id, editor_id, title, description, budget_minor, revision_price_minor, currency, status, created_at, deadline_at
+            SELECT id, client_id, editor_id, title, description, budget_minor, revision_price_minor, currency, status,
+                   created_at, deadline_at, dispute_opened_at, dispute_opened_by, dispute_client_agree, dispute_editor_agree
             FROM orders
             WHERE id = $1
             """,
             order_id,
         )
     return dict(row) if row else None
+
+async def open_dispute(order_id: int, opened_by: int) -> bool:
+    p = pool()
+    async with p.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE orders
+            SET status = 'dispute',
+                dispute_opened_at = NOW(),
+                dispute_opened_by = $2,
+                dispute_client_agree = FALSE,
+                dispute_editor_agree = FALSE,
+                updated_at = NOW()
+            WHERE id = $1
+              AND status = 'accepted'
+              AND editor_id IS NOT NULL
+            RETURNING id
+            """,
+            order_id,
+            opened_by,
+        )
+    return bool(row)
+
+async def set_dispute_agree(order_id: int, user_role: str) -> tuple[bool, bool]:
+    p = pool()
+    async with p.acquire() as conn:
+        if user_role == "client":
+            row = await conn.fetchrow(
+                """
+                UPDATE orders
+                SET dispute_client_agree = TRUE,
+                    updated_at = NOW()
+                WHERE id = $1 AND status = 'dispute'
+                RETURNING dispute_client_agree, dispute_editor_agree
+                """,
+                order_id,
+            )
+        else:
+            row = await conn.fetchrow(
+                """
+                UPDATE orders
+                SET dispute_editor_agree = TRUE,
+                    updated_at = NOW()
+                WHERE id = $1 AND status = 'dispute'
+                RETURNING dispute_client_agree, dispute_editor_agree
+                """,
+                order_id,
+            )
+    if not row:
+        return False, False
+    return bool(row["dispute_client_agree"]), bool(row["dispute_editor_agree"])
+
+async def close_dispute(order_id: int) -> bool:
+    p = pool()
+    async with p.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE orders
+            SET status = 'accepted',
+                updated_at = NOW()
+            WHERE id = $1 AND status = 'dispute'
+            RETURNING id
+            """,
+            order_id,
+        )
+    return bool(row)
 
 async def update_order_if_open(
     order_id: int,

@@ -1,25 +1,14 @@
-import os
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 
 from app.models import get_user_by_telegram_id
+from app.moderation_utils import get_moderator_ids
 from app.states import Verify
 from app.profile_repo import get_editor_profile, set_editor_test_submission, set_editor_verification
 from app.keyboards import kb_nav_menu_help, kb_editor_menu
 
 router = Router()
-
-def _moderator_ids() -> list[int]:
-    raw = os.getenv("MODERATOR_IDS", "").strip()
-    if not raw:
-        return []
-    ids: list[int] = []
-    for part in raw.split(","):
-        part = part.strip()
-        if part.isdigit():
-            ids.append(int(part))
-    return ids
 
 @router.callback_query(F.data == "verify:start")
 async def verify_start(call: CallbackQuery, state: FSMContext):
@@ -68,7 +57,7 @@ async def verify_submit(message: Message, state: FSMContext):
     await set_editor_test_submission(user.id, submission)
     await state.clear()
 
-    mods = _moderator_ids()
+    mods = list(get_moderator_ids())
     text = "Новая заявка на верификацию\n"
     if message.from_user.username:
         text += f"Юз: @{message.from_user.username}\n"

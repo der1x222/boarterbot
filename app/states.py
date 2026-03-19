@@ -41,3 +41,21 @@ class EditOrder(StatesGroup):
 class EditorProposal(StatesGroup):
     waiting_price = State()
     waiting_comment = State()
+
+class DealChat(StatesGroup):
+    chatting = State()
+
+class DisputeChat(StatesGroup):
+    chatting = State()
+
+class DisputeOpenReason(StatesGroup):
+    waiting_text = State()
+
+class ModerationSearch(StatesGroup):
+    waiting_query = State()
+
+class ModerationUserLookup(StatesGroup):
+    waiting_user_id = State()
+
+class ModerationMessage(StatesGroup):
+    waiting_text = State()

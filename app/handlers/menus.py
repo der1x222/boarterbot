@@ -4,9 +4,8 @@ from aiogram.fsm.context import FSMContext
 import os
 
 from app.models import get_user_by_telegram_id
+from app.menu_utils import get_menu_markup_for_user
 from app.keyboards import (
-    kb_main_menu,
-    kb_editor_menu,
     kb_support,
     kb_editor_orders_list,
     kb_editor_my_orders_list,
@@ -53,15 +52,8 @@ async def send_clean_from_call(call: CallbackQuery, state: FSMContext, text: str
     await set_last_bot_message(state, msg.message_id)
     return msg
 
-async def get_menu_markup(user):
-    if user.role == "editor":
-        p = await get_editor_profile(user.id)
-        is_verified = bool(p and p.get("verification_status") == "verified")
-        return kb_editor_menu(is_verified)
-    return kb_main_menu(user.role)
-
 @router.callback_query(
-    F.data.startswith(("client:", "editor:", "mod:", "common:", "deal:")) &
+    F.data.startswith(("client:", "editor:", "common:")) &
     ~F.data.in_(["client:profile", "editor:profile", "client:create_order", "client:my_orders"])
 )
 async def cb_menu(call: CallbackQuery, state: FSMContext):
@@ -76,25 +68,25 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
             call,
             state,
             "Меню:",
-            reply_markup=await get_menu_markup(user),
+            reply_markup=await get_menu_markup_for_user(user),
         )
         await call.answer()
         return
 
     # Заглушки / проверки:
     if call.data == "common:balance":
-        await send_clean_from_call(
-            call,
-            state,
-            "💳 Баланс: скоро будет.",
-            reply_markup=await get_menu_markup(user),
-        )
+            await send_clean_from_call(
+                call,
+                state,
+                "💳 Баланс: скоро будет.",
+                reply_markup=await get_menu_markup_for_user(user),
+            )
     elif call.data == "common:vip":
         await send_clean_from_call(
             call,
             state,
             "💎 VIP: скоро будет.",
-            reply_markup=await get_menu_markup(user),
+            reply_markup=await get_menu_markup_for_user(user),
         )
     elif call.data == "common:support":
         admin_username = os.getenv("ADMIN_USERNAME", "").strip()
@@ -110,15 +102,8 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
                 call,
                 state,
                 "🆘 Поддержка: админ не настроен.",
-                reply_markup=await get_menu_markup(user),
+                reply_markup=await get_menu_markup_for_user(user),
             )
-    elif call.data == "mod:held_messages":
-        await send_clean_from_call(
-            call,
-            state,
-            "🆕 Очередь модерации: скоро будет.",
-            reply_markup=await get_menu_markup(user),
-        )
     elif call.data == "editor:find_orders":
         p = await get_editor_profile(user.id)
         if not p or p.get("verification_status") != "verified":
@@ -130,7 +115,7 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
                 call,
                 state,
                 "🔎 Доступных заказов пока нет.",
-                reply_markup=await get_menu_markup(user),
+                reply_markup=await get_menu_markup_for_user(user),
             )
         else:
             await send_clean_from_call(
@@ -146,7 +131,7 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
                 call,
                 state,
                 "📬 Откликов пока нет.",
-                reply_markup=await get_menu_markup(user),
+                reply_markup=await get_menu_markup_for_user(user),
             )
         else:
             await send_clean_from_call(
@@ -162,7 +147,7 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
                 call,
                 state,
                 "💼 Активных сделок пока нет.",
-                reply_markup=await get_menu_markup(user),
+                reply_markup=await get_menu_markup_for_user(user),
             )
         else:
             await send_clean_from_call(
@@ -171,33 +156,12 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
                 "💼 Мои сделки:",
                 reply_markup=kb_editor_my_orders_list(orders),
             )
-    elif call.data.startswith("deal:chat"):
-        await send_clean_from_call(
-            call,
-            state,
-            "💬 Чат: скоро будет.",
-            reply_markup=await get_menu_markup(user),
-        )
-    elif call.data.startswith("deal:change"):
-        await send_clean_from_call(
-            call,
-            state,
-            "✏️ Изменить: скоро будет.",
-            reply_markup=await get_menu_markup(user),
-        )
-    elif call.data.startswith("deal:dispute"):
-        await send_clean_from_call(
-            call,
-            state,
-            "⚠️ Спор: скоро будет.",
-            reply_markup=await get_menu_markup(user),
-        )
     else:
         await send_clean_from_call(
             call,
             state,
             f"⏳ Раздел в разработке: {call.data}",
-            reply_markup=await get_menu_markup(user),
+            reply_markup=await get_menu_markup_for_user(user),
         )
 
     await call.answer()

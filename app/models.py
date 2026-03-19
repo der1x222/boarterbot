@@ -52,3 +52,11 @@ async def get_user_by_id(user_id: int) -> Optional[User]:
             user_id
         )
     return User(**dict(row)) if row else None
+
+async def list_moderators() -> list[User]:
+    p = pool()
+    async with p.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, telegram_id, username, display_name, role, language FROM users WHERE role='moderator'"
+        )
+    return [User(**dict(r)) for r in rows]

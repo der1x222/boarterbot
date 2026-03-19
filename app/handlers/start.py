@@ -1,10 +1,10 @@
 from aiogram import Router, F
 from aiogram.types import Message
 
-from app.keyboards import kb_choose_role, kb_main_menu, kb_editor_menu
+from app.keyboards import kb_choose_role
+from app.menu_utils import get_menu_markup_for_user
 from app import texts
 from app.models import get_user_by_telegram_id
-from app.profile_repo import get_editor_profile
 
 router = Router()
 
@@ -17,15 +17,13 @@ async def cmd_start(message: Message):
         return
 
     if user.role == "editor":
-        p = await get_editor_profile(user.id)
-        is_verified = bool(p and p.get("verification_status") == "verified")
         await message.answer(
             "Вы уже зарегистрированы ✅",
-            reply_markup=kb_editor_menu(is_verified)
+            reply_markup=await get_menu_markup_for_user(user)
         )
         return
 
     await message.answer(
         "Вы уже зарегистрированы ✅",
-        reply_markup=kb_main_menu(user.role)
+        reply_markup=await get_menu_markup_for_user(user)
     )

@@ -7,8 +7,8 @@ from app.keyboards import (
     kb_profile,
     kb_change_role_confirm,
     kb_main_menu,
-    kb_editor_menu,
 )
+from app.menu_utils import get_menu_markup_for_user
 
 router = Router()
 
@@ -129,12 +129,8 @@ async def profile_set_role(call: CallbackQuery):
         language=user.language,
     )
 
-    if new_role == "editor":
-        p = await get_editor_profile(user.id)
-        is_verified = bool(p and p.get("verification_status") == "verified")
-        markup = kb_editor_menu(is_verified)
-    else:
-        markup = kb_main_menu(new_role)
+    user = await get_user_by_telegram_id(tg.id)
+    markup = await get_menu_markup_for_user(user) if user else kb_main_menu(new_role)
 
     try:
         await call.message.edit_text("✅ Роль изменена.", reply_markup=markup)

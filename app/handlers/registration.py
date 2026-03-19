@@ -6,11 +6,10 @@ from app.models import get_user_by_telegram_id, upsert_user
 from app.keyboards import (
     kb_nav,
     kb_nav_menu_help,
-    kb_main_menu,
-    kb_editor_menu,
     kb_edit_editor_menu,
     kb_edit_client_menu,
 )
+from app.menu_utils import get_menu_markup_for_user
 from app.states import RegClient, RegEditor, EditEditor, EditClient
 from app.profile_repo import (
     upsert_client_profile,
@@ -114,7 +113,7 @@ async def save_client_name(message: Message, state: FSMContext):
     await safe_delete_message(message)
     await state.clear()
     await clear_last_bot_message(state, message.bot, message.chat.id)
-    await message.answer("✅ Профиль заказчика обновлён!", reply_markup=kb_main_menu("client"))
+    await message.answer("✅ Профиль заказчика обновлён!", reply_markup=await get_menu_markup_for_user(user))
 
 # ---------- initial editor registration ----------
 
@@ -189,7 +188,7 @@ async def editor_step_portfolio(message: Message, state: FSMContext):
 
     await message.answer(
         "✅ Профиль монтажёра обновлён!",
-        reply_markup=kb_editor_menu(is_verified)
+        reply_markup=await get_menu_markup_for_user(user)
     )
 
 # ---------- edit menus ----------
@@ -414,8 +413,8 @@ async def reg_cancel(call: CallbackQuery, state: FSMContext):
         if user.role == "editor":
             p = await get_editor_profile(user.id)
             is_verified = bool(p and p.get("verification_status") == "verified")
-            await call.message.answer("Ок, отменено.", reply_markup=kb_editor_menu(is_verified))
+            await call.message.answer("Ок, отменено.", reply_markup=await get_menu_markup_for_user(user))
         else:
-            await call.message.answer("Ок, отменено.", reply_markup=kb_main_menu(user.role))
+            await call.message.answer("Ок, отменено.", reply_markup=await get_menu_markup_for_user(user))
     else:
         await call.message.answer("Ок, отменено. Нажмите /start")
