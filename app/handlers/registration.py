@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 from app.models import get_user_by_telegram_id, upsert_user
 from app.keyboards import (
     kb_nav,
+    kb_nav_portfolio_none,
     kb_nav_menu_help,
     kb_edit_editor_menu,
     kb_edit_client_menu,
@@ -88,7 +89,7 @@ async def cb_role(call: CallbackQuery, state: FSMContext):
             call,
             state,
             "Введите имя (как показывать заказчикам):",
-            reply_markup=kb_nav(cancel="reg:cancel")
+            reply_markup=kb_nav_portfolio_none(cancel="reg:cancel")
         )
     else:
         await state.clear()
@@ -163,6 +164,31 @@ async def editor_step_price(message: Message, state: FSMContext):
         "Ссылка на портфолио:",
         reply_markup=kb_nav(cancel="reg:cancel")
     )
+
+@router.callback_query(F.data == "reg:portfolio:none")
+async def editor_step_portfolio_none(call: CallbackQuery, state: FSMContext):
+    user = await get_user_by_telegram_id(call.from_user.id)
+    if not user:
+        await call.answer("?????????????? /start", show_alert=True)
+        return
+
+    data = await state.get_data()
+    await upsert_editor_profile(
+        user_id=user.id,
+        name=data.get("name", ""),
+        skills=data.get("skills", ""),
+        price_from_minor=int(data.get("price_from_minor") or 0),
+        portfolio_url="",
+    )
+
+    await state.clear()
+    await clear_last_bot_message(state, call.bot, call.message.chat.id)
+
+    await call.message.answer(
+        "??? ?????????????? ?????????????????? ????????????????!",
+        reply_markup=await get_menu_markup_for_user(user)
+    )
+    await call.answer()
 
 @router.message(RegEditor.waiting_portfolio)
 async def editor_step_portfolio(message: Message, state: FSMContext):

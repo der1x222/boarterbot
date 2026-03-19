@@ -42,6 +42,9 @@ class EditorProposal(StatesGroup):
     waiting_price = State()
     waiting_comment = State()
 
+class ChatRequest(StatesGroup):
+    waiting_text = State()
+
 class DealChat(StatesGroup):
     chatting = State()
 
@@ -50,6 +53,9 @@ class DisputeChat(StatesGroup):
 
 class DisputeOpenReason(StatesGroup):
     waiting_text = State()
+
+class VerifyChat(StatesGroup):
+    chatting = State()
 
 class ModerationSearch(StatesGroup):
     waiting_query = State()

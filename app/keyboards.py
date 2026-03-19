@@ -16,6 +16,14 @@ def kb_nav(back: str | None = None, cancel: str = "reg:cancel") -> InlineKeyboar
     b.adjust(2)
     return b.as_markup()
 
+def kb_nav_portfolio_none(cancel: str = "reg:cancel") -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text="\u041d\u0435\u0442\u0443", callback_data="reg:portfolio:none")
+    b.button(text="\u274c \u041e\u0442\u043c\u0435\u043d\u0430", callback_data=cancel)
+    b.adjust(2)
+    return b.as_markup()
+
+
 def kb_nav_menu_help(
     back: str | None = None,
     menu: str = "common:menu",
@@ -114,7 +122,7 @@ def kb_mod_verification_controls(user_id: int, offset: int) -> InlineKeyboardMar
     b = InlineKeyboardBuilder()
     b.button(text="✅ Approve", callback_data=f"mod:verifications:approve:{user_id}:{offset}")
     b.button(text="❌ Reject", callback_data=f"mod:verifications:reject:{user_id}:{offset}")
-    b.button(text="✉️ Написать", callback_data=f"mod:verifications:msg:{user_id}")
+    b.button(text="\U0001F4AC \u0427\u0430\u0442", callback_data=f"mod:verifications:chat:{user_id}")
     b.button(text="⬅️ Назад", callback_data="common:menu")
     b.button(text="▶️ Следующий", callback_data=f"mod:verifications:page:{offset + 1}")
     b.adjust(2, 1, 2)
@@ -283,3 +291,22 @@ def kb_dispute_controls(order_id: int, is_moderator: bool = False) -> InlineKeyb
     b.adjust(1, 1, 1)
     return b.as_markup()
 
+def kb_proposal_actions(order_id: int, editor_id: int) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text="💬 Начать чат", callback_data=f"proposal:chat:{order_id}:{editor_id}")
+    b.button(text="✅ Принять", callback_data=f"proposal:accept:{order_id}:{editor_id}")
+    b.button(text="❌ Отклонить", callback_data=f"proposal:reject:{order_id}:{editor_id}")
+    b.adjust(1, 1, 1)
+    return b.as_markup()
+
+def kb_verify_chat_reply(moderator_user_id: int) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text="💬 Ответить", callback_data=f"verify:chat:reply:{moderator_user_id}")
+    b.adjust(1)
+    return b.as_markup()
+
+def kb_verify_chat_controls() -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text="🚪 Выйти", callback_data="verify:chat:exit")
+    b.adjust(1)
+    return b.as_markup()
