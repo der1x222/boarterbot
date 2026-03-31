@@ -169,7 +169,7 @@ async def editor_step_price(message: Message, state: FSMContext):
 async def editor_step_portfolio_none(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("?????????????? /start", show_alert=True)
+        await call.answer("Нажмите /start", show_alert=True)
         return
 
     data = await state.get_data()
@@ -185,7 +185,7 @@ async def editor_step_portfolio_none(call: CallbackQuery, state: FSMContext):
     await clear_last_bot_message(state, call.bot, call.message.chat.id)
 
     await call.message.answer(
-        "??? ?????????????? ?????????????????? ????????????????!",
+        "✅ Профиль монтажёра обновлён!",
         reply_markup=await get_menu_markup_for_user(user)
     )
     await call.answer()

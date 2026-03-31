@@ -47,6 +47,7 @@ class ChatRequest(StatesGroup):
 
 class DealChat(StatesGroup):
     chatting = State()
+    waiting_link = State()
 
 class DisputeChat(StatesGroup):
     chatting = State()

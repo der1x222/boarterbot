@@ -1,10 +1,13 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
 from datetime import datetime
+import re
+from urllib.parse import urlparse
 
 from app.models import get_user_by_telegram_id, get_user_by_id, list_moderators
-from app.keyboards import kb_nav_menu_help, kb_orders_list, kb_order_detail, kb_deal_menu, kb_editor_order_detail, kb_deal_chat_controls, kb_dispute_join, kb_dispute_controls, kb_deal_chat_menu, kb_proposal_actions
+from app.keyboards import kb_nav_menu_help, kb_orders_list, kb_order_detail, kb_deal_menu, kb_editor_order_detail, kb_deal_chat_controls, kb_dispute_join, kb_dispute_controls, kb_deal_chat_menu, kb_proposal_actions, kb_deal_chat_link_controls
 from app.menu_utils import get_menu_markup_for_user
 from app.states import CreateOrder, DealChange, EditOrder, EditorProposal, DealChat, DisputeChat, DisputeOpenReason, ChatRequest
 from app.order_repo import create_order, list_orders_for_client, get_order_for_client, accept_order, get_order_by_id, update_order_if_open, open_dispute, set_dispute_agree, close_dispute
@@ -1015,10 +1018,67 @@ async def order_menu_open(call: CallbackQuery):
 
 # ---------- deal chat & dispute ----------
 
+_LINK_RE = re.compile(
+    r"(https?://|www\.|t\.me/|telegram\.me/|bit\.ly/|goo\.gl/|drive\.google\.com/|docs\.google\.com/|dropbox\.com/|mega\.nz/|onedrive\.live\.com/)",
+    re.IGNORECASE,
+)
+_ALLOWED_LINK_HOSTS = {
+    "drive.google.com",
+    "docs.google.com",
+    "dropbox.com",
+    "www.dropbox.com",
+    "mega.nz",
+    "onedrive.live.com",
+}
+
+def _message_has_link(message: Message, text: str) -> bool:
+    if message.entities:
+        for ent in message.entities:
+            if ent.type in ("url", "text_link"):
+                return True
+    return bool(_LINK_RE.search(text))
+
+def _extract_urls(message: Message, text: str) -> list[str]:
+    urls: list[str] = []
+    if message.entities:
+        for ent in message.entities:
+            if ent.type == "text_link" and ent.url:
+                urls.append(ent.url)
+            elif ent.type == "url":
+                urls.append(text[ent.offset : ent.offset + ent.length])
+    if not urls:
+        # Fallback for raw text without entities
+        urls.extend(re.findall(r"(https?://\S+|www\.\S+)", text))
+    return urls
+
+def _is_allowed_link(url: str) -> bool:
+    candidate = url.strip()
+    if candidate.startswith("www."):
+        candidate = f"https://{candidate}"
+    parsed = urlparse(candidate)
+    host = (parsed.hostname or "").lower()
+    return host in _ALLOWED_LINK_HOSTS
+
 def _user_label(user) -> str:
     name = user.display_name or user.username or f"id:{user.telegram_id}"
     username = f"@{user.username}" if user.username else ""
     return f"{name} {username}".strip()
+
+async def _activate_deal_chat_for_user(
+    state: FSMContext,
+    bot,
+    telegram_id: int,
+    order_id: int,
+) -> None:
+    # Ensure recipient can reply without manually starting the chat
+    key = StorageKey(
+        bot_id=bot.id,
+        chat_id=telegram_id,
+        user_id=telegram_id,
+    )
+    ctx = FSMContext(storage=state.storage, key=key)
+    await ctx.set_state(DealChat.chatting)
+    await ctx.update_data(order_id=order_id)
 
 @router.callback_query(F.data.startswith("deal:menu:"))
 async def deal_menu_open(call: CallbackQuery):
@@ -1091,6 +1151,42 @@ async def deal_chat_start(call: CallbackQuery, state: FSMContext):
         reply_markup=kb_deal_chat_controls(order_id),
     )
 
+@router.callback_query(F.data.startswith("deal:chat:link:"))
+async def deal_chat_link_start(call: CallbackQuery, state: FSMContext):
+    user = await get_user_by_telegram_id(call.from_user.id)
+    if not user:
+        await call.answer("Нажмите /start", show_alert=True)
+        return
+
+    try:
+        order_id = int(call.data.split(":")[-1])
+    except ValueError:
+        await call.answer("Некорректный номер.", show_alert=True)
+        return
+
+    order = await get_order_by_id(order_id)
+    if not order or not order.get("editor_id"):
+        await call.answer("Сделка не найдена.", show_alert=True)
+        return
+
+    if order.get("status") == "dispute":
+        await call.answer("Спор активен. Перейдите в спор.", show_alert=True)
+        return
+
+    if user.id not in (order.get("client_id"), order.get("editor_id")):
+        await call.answer("Нет доступа.", show_alert=True)
+        return
+
+    await state.clear()
+    await state.set_state(DealChat.waiting_link)
+    await state.update_data(order_id=order_id)
+    await call.answer()
+    await call.message.answer(
+        f"Отправьте ссылку по заказу #{order_id} одним сообщением.\n"
+        "Подсказка: можно отправлять ссылки только на Google Drive, Dropbox, OneDrive, Mega.",
+        reply_markup=kb_deal_chat_link_controls(order_id),
+    )
+
 @router.callback_query(F.data.startswith("deal:chat:"))
 async def deal_chat_menu(call: CallbackQuery):
     user = await get_user_by_telegram_id(call.from_user.id)
@@ -1115,6 +1211,66 @@ async def deal_chat_menu(call: CallbackQuery):
 
     await call.answer()
     await call.message.answer("Меню чата:", reply_markup=kb_deal_chat_menu(order_id))
+
+@router.message(DealChat.waiting_link)
+async def deal_chat_link_message(message: Message, state: FSMContext):
+    user = await get_user_by_telegram_id(message.from_user.id)
+    if not user:
+        return
+
+    data = await state.get_data()
+    order_id = int(data.get("order_id") or 0)
+    if not order_id:
+        return
+
+    order = await get_order_by_id(order_id)
+    if not order or not order.get("editor_id"):
+        await state.clear()
+        await message.answer("Сделка не найдена.")
+        return
+
+    if order.get("status") == "dispute":
+        await message.answer("Спор активен. Перейдите в спор.")
+        return
+
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Отправьте ссылку текстом одним сообщением.")
+        return
+
+    if user.id not in (order.get("client_id"), order.get("editor_id")):
+        await message.answer("Нет доступа.")
+        return
+
+    if not _message_has_link(message, text):
+        await message.answer(
+            "Это не похоже на ссылку. Отправьте ссылку целиком.\n"
+            "Подсказка: можно отправлять ссылки только на Google Drive, Dropbox, OneDrive, Mega.",
+            reply_markup=kb_deal_chat_link_controls(order_id),
+        )
+        return
+
+    urls = _extract_urls(message, text)
+    if not urls or any(not _is_allowed_link(u) for u in urls):
+        await message.answer(
+            "Ссылка должна быть с допустимого сервиса.\n"
+            "Разрешены: Google Drive, Dropbox, OneDrive, Mega.",
+            reply_markup=kb_deal_chat_link_controls(order_id),
+        )
+        return
+
+    recipient_id = order.get("editor_id") if user.id == order.get("client_id") else order.get("client_id")
+    recipient = await get_user_by_id(int(recipient_id))
+    if recipient:
+        await message.bot.send_message(
+            recipient.telegram_id,
+            f"Ссылка по заказу #{order_id} от {_user_label(user)}\n{text}",
+            reply_markup=kb_deal_chat_controls(order_id),
+        )
+        await _activate_deal_chat_for_user(state, message.bot, recipient.telegram_id, order_id)
+
+    await state.set_state(DealChat.chatting)
+    await message.answer("Ссылка отправлена.", reply_markup=kb_deal_chat_controls(order_id))
 
 @router.message(DealChat.chatting)
 async def deal_chat_message(message: Message, state: FSMContext):
@@ -1145,6 +1301,14 @@ async def deal_chat_message(message: Message, state: FSMContext):
     if not text:
         return
 
+    if _message_has_link(message, text):
+        await message.answer(
+            "Ссылки в чате запрещены. Используйте меню «Отправить ссылку»."
+            "Подсказка: можно отправлять ссылки только на Google Drive, Dropbox, OneDrive, Mega.",
+            reply_markup=kb_deal_chat_controls(order_id),
+        )
+        return
+
     recipient_id = order.get("editor_id") if user.id == order.get("client_id") else order.get("client_id")
     recipient = await get_user_by_id(int(recipient_id))
     if recipient:
@@ -1153,6 +1317,7 @@ async def deal_chat_message(message: Message, state: FSMContext):
             f"Чат по заказу #{order_id} от {_user_label(user)}\n{text}",
             reply_markup=kb_deal_chat_controls(order_id),
         )
+        await _activate_deal_chat_for_user(state, message.bot, recipient.telegram_id, order_id)
 
 @router.callback_query(F.data.startswith("deal:dispute:exit:"))
 async def dispute_exit(call: CallbackQuery, state: FSMContext):

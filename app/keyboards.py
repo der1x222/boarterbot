@@ -268,10 +268,18 @@ def kb_deal_chat_menu(order_id: int) -> InlineKeyboardMarkup:
 
 def kb_deal_chat_controls(order_id: int) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
+    b.button(text="🔗 Отправить ссылку", callback_data=f"deal:chat:link:{order_id}")
     b.button(text="\U0001F6AA \u0412\u044b\u0439\u0442\u0438 \u0438\u0437 \u0447\u0430\u0442\u0430", callback_data=f"deal:chat:exit:{order_id}")
     b.button(text="\u26a0\ufe0f \u0421\u043f\u043e\u0440", callback_data=f"deal:dispute:{order_id}")
     b.button(text="\u2b05\ufe0f \u041a \u043c\u0435\u043d\u044e \u0437\u0430\u043a\u0430\u0437\u0430", callback_data=f"deal:menu:{order_id}")
-    b.adjust(1, 1, 1)
+    b.adjust(1, 1, 1, 1)
+    return b.as_markup()
+
+def kb_deal_chat_link_controls(order_id: int) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text="⬅️ Назад к чату", callback_data=f"deal:chat:start:{order_id}")
+    b.button(text="\u2b05\ufe0f \u041a \u043c\u0435\u043d\u044e \u0437\u0430\u043a\u0430\u0437\u0430", callback_data=f"deal:menu:{order_id}")
+    b.adjust(1, 1)
     return b.as_markup()
 
 def kb_dispute_join(order_id: int) -> InlineKeyboardMarkup:
