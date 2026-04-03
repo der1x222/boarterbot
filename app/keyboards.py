@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 def kb_choose_role() -> InlineKeyboardMarkup:
@@ -61,14 +61,27 @@ def kb_main_menu(role: str) -> InlineKeyboardMarkup:
         b.adjust(2, 2, 2, 1)
 
     else:
-        b.button(text="🆕 Новые верификации", callback_data="mod:verifications")
-        b.button(text="⚠️ Споры", callback_data="mod:disputes")
-        b.button(text="💬 Сообщения на проверке", callback_data="mod:held_messages")
-        b.button(text="🔎 Поиск", callback_data="mod:search")
-        b.button(text="📊 Статистика", callback_data="mod:stats")
-        b.button(text="🚫 Пользователи / санкции", callback_data="mod:users")
-        b.adjust(2, 2, 2)
+        return kb_moderation_menu()
 
+    return b.as_markup()
+
+def kb_moderation_menu() -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text="🆕 Новые верификации", callback_data="mod:verifications")
+    b.button(text="⚠️ Споры", callback_data="mod:disputes")
+    b.button(text="💬 Сообщения на проверке", callback_data="mod:held_messages")
+    b.button(text="🔎 Поиск", callback_data="mod:search")
+    b.button(text="📊 Статистика", callback_data="mod:stats")
+    b.button(text="🚫 Пользователи / санкции", callback_data="mod:users")
+    b.button(text="🏠 Меню", callback_data="common:menu")
+    b.adjust(2, 2, 2, 1)
+    return b.as_markup()
+
+def kb_with_moderation_button(markup: InlineKeyboardMarkup) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    for row in markup.inline_keyboard:
+        b.row(*row)
+    b.row(InlineKeyboardButton(text="🛠️ Инструменты модератора", callback_data="mod:menu"))
     return b.as_markup()
 
 def kb_editor_menu(is_verified: bool) -> InlineKeyboardMarkup:

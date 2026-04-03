@@ -22,6 +22,7 @@ from app.keyboards import (
     kb_mod_held_controls,
     kb_mod_dispute_controls,
     kb_mod_user_controls,
+    kb_moderation_menu,
     kb_nav_menu_help,
     kb_verify_chat_reply,
     kb_verify_chat_controls,
@@ -144,6 +145,18 @@ async def _show_disputes(call: CallbackQuery, offset: int):
     )
 
 # ---------- menu entries ----------
+
+@router.callback_query(F.data == "mod:menu")
+async def mod_menu(call: CallbackQuery):
+    user = await _ensure_moderator(call)
+    if not user:
+        return
+    await _safe_edit_or_send(
+        call,
+        "Инструменты модератора:",
+        reply_markup=kb_moderation_menu(),
+    )
+    await call.answer()
 
 @router.callback_query(F.data == "mod:verifications")
 async def mod_verifications(call: CallbackQuery):
