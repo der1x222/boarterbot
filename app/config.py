@@ -19,7 +19,7 @@ def load_config() -> Config:
 
     db_dsn = os.getenv("DB_DSN", "").strip()
     redis_dsn = os.getenv("REDIS_DSN", "").strip()
-    default_language = os.getenv("DEFAULT_LANGUAGE", "ru").strip()
+    default_language = os.getenv("DEFAULT_LANGUAGE", "en").strip()
 
     raw_mods = os.getenv("MODERATOR_IDS", "").strip()
     moderator_ids: set[int] = set()

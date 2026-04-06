@@ -16,7 +16,7 @@ async def upsert_user(
     username: Optional[str],
     display_name: Optional[str],
     role: str,
-    language: str = "ru",
+    language: str = "en",
 ) -> User:
     p = pool()
     async with p.acquire() as conn:

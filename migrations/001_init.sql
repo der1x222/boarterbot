@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT,
   display_name TEXT,
   role TEXT NOT NULL CHECK (role IN ('client','editor','moderator')),
-  language TEXT NOT NULL DEFAULT 'ru',
+  language TEXT NOT NULL DEFAULT 'en',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

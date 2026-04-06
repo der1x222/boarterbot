@@ -28,6 +28,7 @@ from app.keyboards import (
     kb_verify_chat_controls,
 )
 from app.states import ModerationSearch, ModerationUserLookup, ModerationMessage, VerifyChat
+from app import texts
 
 router = Router()
 
@@ -44,13 +45,16 @@ def _truncate(text: str | None, limit: int = 600) -> str:
 def _money_from_minor(minor: int, currency: str = "USD") -> str:
     return f"{minor / 100:.2f} {currency}"
 
+def _t(user, en: str, ua: str) -> str:
+    return texts.tr(getattr(user, "language", None), en, ua)
+
 async def _ensure_moderator(call: CallbackQuery):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(texts.tr(None, "Type /start", "Натисніть /start"), show_alert=True)
         return None
     if not is_moderator_telegram_id(call.from_user.id):
-        await call.answer("Нет доступа", show_alert=True)
+        await call.answer(_t(user, "Access denied", "Немає доступу"), show_alert=True)
         return None
     return user
 
@@ -66,47 +70,51 @@ async def _safe_edit_or_send(call: CallbackQuery, text: str, reply_markup=None):
     except:
         await call.message.answer(text, reply_markup=reply_markup)
 
-async def _show_pending_verifications(call: CallbackQuery, offset: int):
+async def _show_pending_verifications(call: CallbackQuery, offset: int, lang: str | None = None):
     items = await list_pending_verifications(offset=offset, limit=1)
     if not items:
         await _safe_edit_or_send(
             call,
-            "🆕 Новые верификации\n\nОчередь пустая.",
-            reply_markup=kb_nav_menu_help(back="common:menu"),
+            texts.tr(lang, "🆕 New verifications\n\nQueue is empty.", "🆕 Нові верифікації\n\nЧерга порожня."),
+            reply_markup=kb_nav_menu_help(back="common:menu", lang=lang),
         )
         return
 
     p = items[0]
     price = _money_from_minor(int(p.get("price_from_minor") or 0))
+    name_label = texts.tr(lang, "name", "ім'я")
+    skills_label = texts.tr(lang, "skills", "спеціалізація")
+    price_label = texts.tr(lang, "price", "ціна")
+    portfolio_label = texts.tr(lang, "portfolio", "портфоліо")
     text = (
-        "🆕 Новые верификации\n\n"
+        texts.tr(lang, "🆕 New verifications\n\n", "🆕 Нові верифікації\n\n") +
         f"user_id: {p.get('user_id')}\n"
-        f"имя: {p.get('name') or '—'}\n"
-        f"специализации: {p.get('skills') or '—'}\n"
-        f"цена: {price}\n"
-        f"портфолио: {p.get('portfolio_url') or '—'}\n"
+        f"{name_label}: {p.get('name') or '?'}\n"
+        f"{skills_label}: {p.get('skills') or '?'}\n"
+        f"{price_label}: {price}\n"
+        f"{portfolio_label}: {p.get('portfolio_url') or '?'}\n"
         f"test_submission: {_truncate(p.get('test_submission'))}\n"
         f"verification_status: {p.get('verification_status')}"
     )
     await _safe_edit_or_send(
         call,
         text,
-        reply_markup=kb_mod_verification_controls(int(p["user_id"]), offset),
+        reply_markup=kb_mod_verification_controls(int(p["user_id"]), offset, lang),
     )
 
-async def _show_held_messages(call: CallbackQuery, offset: int):
+async def _show_held_messages(call: CallbackQuery, offset: int, lang: str | None = None):
     items = await list_held_messages(offset=offset, limit=1)
     if not items:
         await _safe_edit_or_send(
             call,
-            "💬 Сообщения на проверке\n\nОчередь пустая.",
-            reply_markup=kb_nav_menu_help(back="common:menu"),
+            texts.tr(lang, "💬 Messages on review\n\nQueue is empty.", "💬 Повідомлення на перевірці\n\nЧерга порожня."),
+            reply_markup=kb_nav_menu_help(back="common:menu", lang=lang),
         )
         return
 
     m = items[0]
     text = (
-        "💬 Сообщения на проверке\n\n"
+        texts.tr(lang, "💬 Messages on review\n\n", "💬 Повідомлення на перевірці\n\n") +
         f"deal_id: {m.get('deal_id')}\n"
         f"sender_user_id: {m.get('sender_user_id')}\n"
         f"original_text: {_truncate(m.get('original_text'))}\n"
@@ -116,22 +124,22 @@ async def _show_held_messages(call: CallbackQuery, offset: int):
     await _safe_edit_or_send(
         call,
         text,
-        reply_markup=kb_mod_held_controls(int(m["id"]), offset),
+        reply_markup=kb_mod_held_controls(int(m["id"]), offset, lang),
     )
 
-async def _show_disputes(call: CallbackQuery, offset: int):
+async def _show_disputes(call: CallbackQuery, offset: int, lang: str | None = None):
     items = await list_dispute_deals(offset=offset, limit=1)
     if not items:
         await _safe_edit_or_send(
             call,
-            "⚠️ Споры\n\nАктивных споров нет.",
-            reply_markup=kb_nav_menu_help(back="common:menu"),
+            texts.tr(lang, "⚠️ Disputes\n\nNo active disputes.", "⚠️ Спори\n\nАктивних спорів немає."),
+            reply_markup=kb_nav_menu_help(back="common:menu", lang=lang),
         )
         return
 
     d = items[0]
     text = (
-        "⚠️ Споры\n\n"
+        texts.tr(lang, "⚠️ Disputes\n\n", "⚠️ Спори\n\n") +
         f"deal_id: {d.get('id')}\n"
         f"client_id: {d.get('client_id')}\n"
         f"editor_id: {d.get('editor_id')}\n"
@@ -141,7 +149,7 @@ async def _show_disputes(call: CallbackQuery, offset: int):
     await _safe_edit_or_send(
         call,
         text,
-        reply_markup=kb_mod_dispute_controls(int(d["id"]), offset),
+        reply_markup=kb_mod_dispute_controls(int(d["id"]), offset, lang),
     )
 
 # ---------- menu entries ----------
@@ -153,8 +161,8 @@ async def mod_menu(call: CallbackQuery):
         return
     await _safe_edit_or_send(
         call,
-        "Инструменты модератора:",
-        reply_markup=kb_moderation_menu(),
+        _t(user, "Moderator tools:", "Інструменти модератора:"),
+        reply_markup=kb_moderation_menu(user.language),
     )
     await call.answer()
 
@@ -163,7 +171,7 @@ async def mod_verifications(call: CallbackQuery):
     user = await _ensure_moderator(call)
     if not user:
         return
-    await _show_pending_verifications(call, 0)
+    await _show_pending_verifications(call, 0, user.language)
     await call.answer()
 
 @router.callback_query(F.data.startswith("mod:verifications:page:"))
@@ -174,9 +182,9 @@ async def mod_verifications_page(call: CallbackQuery):
     try:
         offset = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Неверный offset.", show_alert=True)
+        await call.answer(_t(user, "Invalid offset.", "Некоректний offset."), show_alert=True)
         return
-    await _show_pending_verifications(call, offset)
+    await _show_pending_verifications(call, offset, user.language)
     await call.answer()
 
 @router.callback_query(F.data.startswith("mod:verifications:approve:"))
@@ -186,13 +194,13 @@ async def mod_verifications_approve(call: CallbackQuery):
         return
     parts = call.data.split(":")
     if len(parts) < 5:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
     try:
         editor_user_id = int(parts[3])
         offset = int(parts[4])
     except ValueError:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
 
     await set_editor_verification(editor_user_id, "verified", note="approved by moderator")
@@ -204,8 +212,8 @@ async def mod_verifications_approve(call: CallbackQuery):
         object_id=editor_user_id,
         payload={},
     )
-    await _show_pending_verifications(call, offset)
-    await call.answer("✅ Одобрено.")
+    await _show_pending_verifications(call, offset, user.language)
+    await call.answer(_t(user, "✅ Approved.", "✅ Підтверджено."))
 
 @router.callback_query(F.data.startswith("mod:verifications:reject:"))
 async def mod_verifications_reject(call: CallbackQuery):
@@ -214,13 +222,13 @@ async def mod_verifications_reject(call: CallbackQuery):
         return
     parts = call.data.split(":")
     if len(parts) < 5:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
     try:
         editor_user_id = int(parts[3])
         offset = int(parts[4])
     except ValueError:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
 
     await set_editor_verification(editor_user_id, "rejected", note="rejected by moderator")
@@ -232,8 +240,8 @@ async def mod_verifications_reject(call: CallbackQuery):
         object_id=editor_user_id,
         payload={},
     )
-    await _show_pending_verifications(call, offset)
-    await call.answer("❌ Отклонено.")
+    await _show_pending_verifications(call, offset, user.language)
+    await call.answer(_t(user, "❌ Rejected.", "❌ Відхилено."))
 
 @router.callback_query(F.data.startswith("mod:verifications:chat:"))
 async def mod_verifications_chat(call: CallbackQuery, state: FSMContext):
@@ -243,7 +251,7 @@ async def mod_verifications_chat(call: CallbackQuery, state: FSMContext):
     try:
         editor_user_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("???????????????? user_id.", show_alert=True)
+        await call.answer(_t(user, "Invalid user_id.", "Некоректний user_id."), show_alert=True)
         return
 
     await state.clear()
@@ -252,8 +260,8 @@ async def mod_verifications_chat(call: CallbackQuery, state: FSMContext):
 
     await _safe_edit_or_send(
         call,
-        "?????? ?? ????????????????????. ???????????? ??????????????????.",
-        reply_markup=kb_verify_chat_controls(),
+        _t(user, "Chat with editor. Send a message.", "Чат з монтажером. Надішліть повідомлення."),
+        reply_markup=kb_verify_chat_controls(user.language),
     )
     await call.answer()
 
@@ -261,8 +269,8 @@ async def mod_verifications_chat(call: CallbackQuery, state: FSMContext):
     if editor:
         await call.bot.send_message(
             editor.telegram_id,
-            "?????????????????? ?????????? ?????? ???? ??????????????????????. ?????????????? ??????????????????, ?????????? ????????????????.",
-            reply_markup=kb_verify_chat_reply(user.id),
+            _t(user, "Moderator is waiting for your verification message. You can reply here.", "Модератор очікує ваше повідомлення по верифікації. Ви можете відповісти тут."),
+            reply_markup=kb_verify_chat_reply(user.id, user.language),
         )
 
 @router.callback_query(F.data.startswith("mod:verifications:msg:"))
@@ -273,7 +281,7 @@ async def mod_verifications_message(call: CallbackQuery, state: FSMContext):
     try:
         target_user_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Неверный user_id.", show_alert=True)
+        await call.answer(_t(user, "Invalid user_id.", "Некоректний user_id."), show_alert=True)
         return
 
     await state.clear()
@@ -286,8 +294,8 @@ async def mod_verifications_message(call: CallbackQuery, state: FSMContext):
     )
     await _safe_edit_or_send(
         call,
-        "✉️ Напишите сообщение пользователю одним сообщением:",
-        reply_markup=kb_nav_menu_help(back="common:menu"),
+        _t(user, "✉️ Send a single message to the user:", "✉️ Напишіть повідомлення користувачу одним повідомленням:"),
+        reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
     )
     await call.answer()
 
@@ -296,7 +304,7 @@ async def mod_held_messages(call: CallbackQuery):
     user = await _ensure_moderator(call)
     if not user:
         return
-    await _show_held_messages(call, 0)
+    await _show_held_messages(call, 0, user.language)
     await call.answer()
 
 @router.callback_query(F.data.startswith("mod:held_messages:page:"))
@@ -307,9 +315,9 @@ async def mod_held_messages_page(call: CallbackQuery):
     try:
         offset = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Неверный offset.", show_alert=True)
+        await call.answer(_t(user, "Invalid offset.", "Некоректний offset."), show_alert=True)
         return
-    await _show_held_messages(call, offset)
+    await _show_held_messages(call, offset, user.language)
     await call.answer()
 
 @router.callback_query(F.data.startswith("mod:held_messages:approve:"))
@@ -319,13 +327,13 @@ async def mod_held_messages_approve(call: CallbackQuery):
         return
     parts = call.data.split(":")
     if len(parts) < 5:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
     try:
         message_id = int(parts[3])
         offset = int(parts[4])
     except ValueError:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
 
     held = await get_held_message_by_id(message_id)
@@ -338,8 +346,8 @@ async def mod_held_messages_approve(call: CallbackQuery):
         object_id=message_id,
         payload={},
     )
-    await _show_held_messages(call, offset)
-    await call.answer("✅ Одобрено.")
+    await _show_held_messages(call, offset, user.language)
+    await call.answer(_t(user, "✅ Approved.", "✅ Підтверджено."))
 
 @router.callback_query(F.data.startswith("mod:held_messages:reject:"))
 async def mod_held_messages_reject(call: CallbackQuery):
@@ -348,13 +356,13 @@ async def mod_held_messages_reject(call: CallbackQuery):
         return
     parts = call.data.split(":")
     if len(parts) < 5:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
     try:
         message_id = int(parts[3])
         offset = int(parts[4])
     except ValueError:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
 
     held = await get_held_message_by_id(message_id)
@@ -367,8 +375,8 @@ async def mod_held_messages_reject(call: CallbackQuery):
         object_id=message_id,
         payload={},
     )
-    await _show_held_messages(call, offset)
-    await call.answer("❌ Отклонено.")
+    await _show_held_messages(call, offset, user.language)
+    await call.answer(_t(user, "❌ Rejected.", "❌ Відхилено."))
 
 @router.callback_query(F.data.startswith("mod:held_messages:ban:"))
 async def mod_held_messages_ban(call: CallbackQuery):
@@ -377,18 +385,18 @@ async def mod_held_messages_ban(call: CallbackQuery):
         return
     parts = call.data.split(":")
     if len(parts) < 5:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
     try:
         message_id = int(parts[3])
         offset = int(parts[4])
     except ValueError:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
 
     held = await get_held_message_by_id(message_id)
     if not held:
-        await call.answer("Сообщение не найдено.", show_alert=True)
+        await call.answer(_t(user, "Message not found.", "Повідомлення не знайдено."), show_alert=True)
         return
 
     target_user_id = int(held["sender_user_id"])
@@ -407,8 +415,8 @@ async def mod_held_messages_ban(call: CallbackQuery):
         object_id=message_id,
         payload={"reason": "held_message"},
     )
-    await _show_held_messages(call, offset)
-    await call.answer("🚫 Пользователь забанен.")
+    await _show_held_messages(call, offset, user.language)
+    await call.answer(_t(user, "🚫 User banned.", "🚫 Користувача заблоковано."))
 
 @router.callback_query(F.data.startswith("mod:held_messages:msg:"))
 async def mod_held_messages_message(call: CallbackQuery, state: FSMContext):
@@ -418,12 +426,12 @@ async def mod_held_messages_message(call: CallbackQuery, state: FSMContext):
     try:
         message_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
 
     held = await get_held_message_by_id(message_id)
     if not held:
-        await call.answer("Сообщение не найдено.", show_alert=True)
+        await call.answer(_t(user, "Message not found.", "Повідомлення не знайдено."), show_alert=True)
         return
 
     await state.clear()
@@ -436,8 +444,8 @@ async def mod_held_messages_message(call: CallbackQuery, state: FSMContext):
     )
     await _safe_edit_or_send(
         call,
-        "✉️ Напишите сообщение пользователю одним сообщением:",
-        reply_markup=kb_nav_menu_help(back="common:menu"),
+        _t(user, "✉️ Send a single message to the user:", "✉️ Напишіть повідомлення користувачу одним повідомленням:"),
+        reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
     )
     await call.answer()
 
@@ -446,7 +454,7 @@ async def mod_disputes(call: CallbackQuery):
     user = await _ensure_moderator(call)
     if not user:
         return
-    await _show_disputes(call, 0)
+    await _show_disputes(call, 0, user.language)
     await call.answer()
 
 @router.callback_query(F.data.startswith("mod:disputes:page:"))
@@ -457,9 +465,9 @@ async def mod_disputes_page(call: CallbackQuery):
     try:
         offset = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Неверный offset.", show_alert=True)
+        await call.answer(_t(user, "Invalid offset.", "Некоректний offset."), show_alert=True)
         return
-    await _show_disputes(call, offset)
+    await _show_disputes(call, offset, user.language)
     await call.answer()
 
 @router.callback_query(F.data.startswith("mod:disputes:pay:"))
@@ -469,13 +477,13 @@ async def mod_disputes_pay(call: CallbackQuery):
         return
     parts = call.data.split(":")
     if len(parts) < 5:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
     try:
         deal_id = int(parts[3])
         offset = int(parts[4])
     except ValueError:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
 
     await log_moderation_action(
@@ -486,8 +494,8 @@ async def mod_disputes_pay(call: CallbackQuery):
         object_id=deal_id,
         payload={},
     )
-    await _show_disputes(call, offset)
-    await call.answer("✅ Решение записано.")
+    await _show_disputes(call, offset, user.language)
+    await call.answer(_t(user, "✅ Decision recorded.", "✅ Рішення записано."))
 
 @router.callback_query(F.data.startswith("mod:disputes:refund:"))
 async def mod_disputes_refund(call: CallbackQuery):
@@ -496,13 +504,13 @@ async def mod_disputes_refund(call: CallbackQuery):
         return
     parts = call.data.split(":")
     if len(parts) < 5:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
     try:
         deal_id = int(parts[3])
         offset = int(parts[4])
     except ValueError:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
 
     await log_moderation_action(
@@ -513,8 +521,8 @@ async def mod_disputes_refund(call: CallbackQuery):
         object_id=deal_id,
         payload={},
     )
-    await _show_disputes(call, offset)
-    await call.answer("↩️ Решение записано.")
+    await _show_disputes(call, offset, user.language)
+    await call.answer(_t(user, "↩️ Decision recorded.", "↩️ Рішення записано."))
 
 @router.callback_query(F.data.startswith("mod:disputes:msg:"))
 async def mod_disputes_message(call: CallbackQuery, state: FSMContext):
@@ -524,12 +532,12 @@ async def mod_disputes_message(call: CallbackQuery, state: FSMContext):
     try:
         deal_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
 
     deal = await get_deal_by_id(deal_id)
     if not deal:
-        await call.answer("Сделка не найдена.", show_alert=True)
+        await call.answer(_t(user, "Deal not found.", "Угоду не знайдено."), show_alert=True)
         return
 
     targets = []
@@ -548,8 +556,8 @@ async def mod_disputes_message(call: CallbackQuery, state: FSMContext):
     )
     await _safe_edit_or_send(
         call,
-        "✉️ Напишите сообщение для сторон спора одним сообщением:",
-        reply_markup=kb_nav_menu_help(back="common:menu"),
+        _t(user, "✉️ Send a single message to dispute parties:", "✉️ Напишіть повідомлення сторонам спору одним повідомленням:"),
+        reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
     )
     await call.answer()
 
@@ -562,8 +570,8 @@ async def mod_search_start(call: CallbackQuery, state: FSMContext):
     await state.set_state(ModerationSearch.waiting_query)
     await _safe_edit_or_send(
         call,
-        "🔎 Поиск\n\nВведите user_id или deal_id:",
-        reply_markup=kb_nav_menu_help(back="common:menu"),
+        _t(user, "🔎 Search\n\nEnter user_id or deal_id:", "🔎 Пошук\n\nВведіть user_id або deal_id:"),
+        reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
     )
     await call.answer()
 
@@ -576,18 +584,18 @@ async def mod_search_result(message: Message, state: FSMContext):
 
     raw = (message.text or "").strip()
     if not raw.isdigit():
-        await message.answer("Введите число (user_id или deal_id).")
+        await message.answer(_t(user, "Enter a number (user_id or deal_id).", "Введіть число (user_id або deal_id)."))
         return
 
     query_id = int(raw)
     found_user = await get_user_by_id(query_id)
     found_deal = await get_deal_by_id(query_id)
 
-    lines = ["🔎 Поиск"]
+    lines = [_t(user, "🔎 Search", "🔎 Пошук")]
     if found_user:
         username = f"@{found_user.username}" if found_user.username else "—"
         lines.append(
-            "\nПользователь:"
+            _t(user, "\nUser:", "\nКористувач:") +
             f"\n  user_id: {found_user.id}"
             f"\n  telegram_id: {found_user.telegram_id}"
             f"\n  username: {username}"
@@ -596,7 +604,7 @@ async def mod_search_result(message: Message, state: FSMContext):
         )
     if found_deal:
         lines.append(
-            "\nСделка:"
+            _t(user, "\nDeal:", "\nУгода:") +
             f"\n  deal_id: {found_deal.get('id')}"
             f"\n  client_id: {found_deal.get('client_id')}"
             f"\n  editor_id: {found_deal.get('editor_id')}"
@@ -605,7 +613,7 @@ async def mod_search_result(message: Message, state: FSMContext):
         )
 
     if not found_user and not found_deal:
-        lines.append("\nНичего не найдено.")
+        lines.append(_t(user, "\nNothing found.", "\nНічого не знайдено."))
 
     await state.clear()
     await message.answer("\n".join(lines), reply_markup=await get_menu_markup_for_user(user))
@@ -617,15 +625,15 @@ async def mod_stats(call: CallbackQuery):
         return
     stats = await count_stats()
     text = (
-        "📊 Статистика\n\n"
-        f"pending верификаций: {stats.get('pending_verifications', 0)}\n"
-        f"held messages: {stats.get('held_messages', 0)}\n"
-        f"disputes: {stats.get('disputes', 0)}\n"
-        f"users: {stats.get('users', 0)}\n"
-        f"editor_profiles: {stats.get('editor_profiles', 0)}\n"
-        f"client_profiles: {stats.get('client_profiles', 0)}"
+        _t(user, "📊 Stats\n\n", "📊 Статистика\n\n") +
+        f"{_t(user, 'pending verifications', 'очікують верифікації')}: {stats.get('pending_verifications', 0)}\n"
+        f"{_t(user, 'held messages', 'повідомлення на перевірці')}: {stats.get('held_messages', 0)}\n"
+        f"{_t(user, 'disputes', 'спори')}: {stats.get('disputes', 0)}\n"
+        f"{_t(user, 'users', 'користувачі')}: {stats.get('users', 0)}\n"
+        f"{_t(user, 'editor profiles', 'профілі монтажерів')}: {stats.get('editor_profiles', 0)}\n"
+        f"{_t(user, 'client profiles', 'профілі замовників')}: {stats.get('client_profiles', 0)}"
     )
-    await _safe_edit_or_send(call, text, reply_markup=kb_nav_menu_help(back="common:menu"))
+    await _safe_edit_or_send(call, text, reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language))
     await call.answer()
 
 @router.callback_query(F.data == "mod:users")
@@ -637,8 +645,8 @@ async def mod_users_start(call: CallbackQuery, state: FSMContext):
     await state.set_state(ModerationUserLookup.waiting_user_id)
     await _safe_edit_or_send(
         call,
-        "🚫 Пользователи / санкции\n\nВведите user_id:",
-        reply_markup=kb_nav_menu_help(back="common:menu"),
+        _t(user, "🚫 Users / sanctions\n\nEnter user_id:", "🚫 Користувачі / санкції\n\nВведіть user_id:"),
+        reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
     )
     await call.answer()
 
@@ -651,17 +659,17 @@ async def mod_users_show(message: Message, state: FSMContext):
 
     raw = (message.text or "").strip()
     if not raw.isdigit():
-        await message.answer("Введите число (user_id).")
+        await message.answer(_t(moderator, "Enter a number (user_id).", "Введіть число (user_id)."))
         return
 
     user_id = int(raw)
     user = await get_user_by_id(user_id)
     if not user:
-        await message.answer("Пользователь не найден.")
+        await message.answer(_t(moderator, "User not found.", "Користувача не знайдено."))
         return
 
     text = (
-        "🚫 Пользователь\n\n"
+        _t(moderator, "🚫 User\n\n", "🚫 Користувач\n\n") +
         f"user_id: {user.id}\n"
         f"telegram_id: {user.telegram_id}\n"
         f"username: {('@' + user.username) if user.username else '—'}\n"
@@ -669,7 +677,7 @@ async def mod_users_show(message: Message, state: FSMContext):
         f"role: {user.role}"
     )
     await state.clear()
-    await message.answer(text, reply_markup=kb_mod_user_controls(user.id))
+    await message.answer(text, reply_markup=kb_mod_user_controls(user.id, moderator.language))
 
 @router.callback_query(F.data.startswith("mod:user:warn:"))
 async def mod_user_warn(call: CallbackQuery):
@@ -679,7 +687,7 @@ async def mod_user_warn(call: CallbackQuery):
     try:
         target_user_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(moderator, "Invalid data.", "Невірні дані."), show_alert=True)
         return
 
     await create_user_sanction(
@@ -698,8 +706,8 @@ async def mod_user_warn(call: CallbackQuery):
     )
     await _safe_edit_or_send(
         call,
-        f"⚠️ Warning выдан пользователю {target_user_id}.",
-        reply_markup=kb_mod_user_controls(target_user_id),
+        _t(moderator, f"⚠️ Warning issued to user {target_user_id}.", f"⚠️ Попередження видано користувачу {target_user_id}."),
+        reply_markup=kb_mod_user_controls(target_user_id, moderator.language),
     )
     await call.answer()
 
@@ -711,7 +719,7 @@ async def mod_user_ban(call: CallbackQuery):
     try:
         target_user_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(moderator, "Invalid data.", "Невірні дані."), show_alert=True)
         return
 
     await create_user_sanction(
@@ -730,8 +738,8 @@ async def mod_user_ban(call: CallbackQuery):
     )
     await _safe_edit_or_send(
         call,
-        f"🚫 Пользователь {target_user_id} забанен.",
-        reply_markup=kb_mod_user_controls(target_user_id),
+        _t(moderator, f"🚫 User {target_user_id} banned.", f"🚫 Користувача {target_user_id} заблоковано."),
+        reply_markup=kb_mod_user_controls(target_user_id, moderator.language),
     )
     await call.answer()
 
@@ -743,7 +751,7 @@ async def mod_user_message(call: CallbackQuery, state: FSMContext):
     try:
         target_user_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(moderator, "Invalid data.", "Невірні дані."), show_alert=True)
         return
 
     await state.clear()
@@ -756,8 +764,8 @@ async def mod_user_message(call: CallbackQuery, state: FSMContext):
     )
     await _safe_edit_or_send(
         call,
-        "✉️ Напишите сообщение пользователю одним сообщением:",
-        reply_markup=kb_nav_menu_help(back="common:menu"),
+        _t(moderator, "✉️ Send a single message to the user:", "✉️ Напишіть повідомлення користувачу одним повідомленням:"),
+        reply_markup=kb_nav_menu_help(back="common:menu", lang=moderator.language),
     )
     await call.answer()
 
@@ -770,7 +778,7 @@ async def mod_send_message(message: Message, state: FSMContext):
 
     text = (message.text or "").strip()
     if not text:
-        await message.answer("Введите текст сообщения.")
+        await message.answer(_t(moderator, "Enter message text.", "Введіть текст повідомлення."))
         return
 
     data = await state.get_data()
@@ -784,7 +792,7 @@ async def mod_send_message(message: Message, state: FSMContext):
         if target_user:
             await message.bot.send_message(
                 target_user.telegram_id,
-                f"Сообщение от модератора:\n{text}",
+                _t(moderator, f"Message from moderator:\n{text}", f"Повідомлення від модератора:\n{text}"),
             )
 
     await log_moderation_action(
@@ -797,4 +805,4 @@ async def mod_send_message(message: Message, state: FSMContext):
     )
 
     await state.clear()
-    await message.answer("✅ Сообщение отправлено.", reply_markup=await get_menu_markup_for_user(moderator))
+    await message.answer(_t(moderator, "✅ Message sent.", "✅ Повідомлення надіслано."), reply_markup=await get_menu_markup_for_user(moderator))

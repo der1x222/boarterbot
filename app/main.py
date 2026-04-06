@@ -11,6 +11,7 @@ from app.handlers.profile import router as profile_router
 from app.handlers.orders import router as orders_router
 from app.handlers.verify import router as verify_router
 from app.handlers.moderation import router as moderation_router
+from app.handlers.settings import router as settings_router
 
 async def main():
     cfg = load_config()
@@ -36,6 +37,7 @@ async def main():
     dp.include_router(orders_router)
     dp.include_router(verify_router)
     dp.include_router(moderation_router)
+    dp.include_router(settings_router)
     dp.include_router(menus_router)
     
     await dp.start_polling(bot)

@@ -9,6 +9,7 @@ from app.keyboards import (
     kb_main_menu,
 )
 from app.menu_utils import get_menu_markup_for_user
+from app import texts
 
 router = Router()
 
@@ -28,53 +29,63 @@ async def show_profile(call: CallbackQuery):
         p = await get_editor_profile(user.id)
 
         if not p:
-            text = (
-                "👤 Профиль монтажёра\n\n"
-                "Анкета ещё не заполнена.\n"
-                "Нажмите «Изменить информацию»."
+            text = texts.tr(
+                user.language,
+                "👤 Editor profile\n\nProfile is not filled yet.\nTap “Edit profile”.",
+                "👤 Профіль монтажера\n\nАнкета ще не заповнена.\nНатисніть «Редагувати профіль».",
             )
             status = "not_submitted"
         else:
             status = p.get("verification_status") or "not_submitted"
             status_label = {
-                "not_submitted": "❌ Не пройдена",
-                "pending": "🕒 На проверке",
-                "verified": "✅ Верифицирован",
-                "rejected": "⛔ Отклонено",
+                "not_submitted": texts.tr(user.language, "❌ Not submitted", "❌ Не подано"),
+                "pending": texts.tr(user.language, "🕒 Pending", "🕒 На перевірці"),
+                "verified": texts.tr(user.language, "✅ Verified", "✅ Верифіковано"),
+                "rejected": texts.tr(user.language, "⛔ Rejected", "⛔ Відхилено"),
             }.get(status, status)
 
             price = money_from_minor(int(p.get("price_from_minor") or 0), "USD")
             portfolio = p.get("portfolio_url") or "—"
 
+            label_name = texts.tr(user.language, "Name", "Ім'я")
+            label_skills = texts.tr(user.language, "Skills", "Спеціалізації")
+            label_price = texts.tr(user.language, "Price from", "Ціна від")
+            label_portfolio = texts.tr(user.language, "Portfolio", "Портфоліо")
+            label_verification = texts.tr(user.language, "Verification", "Верифікація")
+            label_role = texts.tr(user.language, "Role", "Роль")
+            role_label = texts.tr(user.language, "editor", "монтажер")
             text = (
-                "👤 Профиль монтажёра\n\n"
-                f"Имя: {p.get('name') or '—'}\n"
-                f"Специализации: {p.get('skills') or '—'}\n"
-                f"Цена от: {price}\n"
-                f"Портфолио: {portfolio}\n\n"
-                f"Верификация: {status_label}\n"
-                f"\nРоль: монтажёр"
+                f"{texts.tr(user.language, '👤 Editor profile', '👤 Профіль монтажера')}\n\n"
+                f"{label_name}: {p.get('name') or '—'}\n"
+                f"{label_skills}: {p.get('skills') or '—'}\n"
+                f"{label_price}: {price}\n"
+                f"{label_portfolio}: {portfolio}\n\n"
+                f"{label_verification}: {status_label}\n"
+                f"\n{label_role}: {role_label}"
             )
 
             if status == "rejected" and p.get("verification_note"):
-                text += f"\nПричина: {p['verification_note']}"
+                text += f"\n{texts.tr(user.language, 'Reason', 'Причина')}: {p['verification_note']}"
 
-        markup = kb_profile("editor", status)
+        markup = kb_profile("editor", status, user.language)
 
     elif user.role == "client":
         p = await get_client_profile(user.id)
         name = (p.get("name") if p else None) or "—"
 
+        label_name = texts.tr(user.language, "Name", "Ім'я")
+        label_role = texts.tr(user.language, "Role", "Роль")
+        role_label = texts.tr(user.language, "client", "замовник")
         text = (
-            "👤 Профиль заказчика\n\n"
-            f"Имя: {name}\n\n"
-            "Роль: заказчик"
+            f"{texts.tr(user.language, '👤 Client profile', '👤 Профіль замовника')}\n\n"
+            f"{label_name}: {name}\n\n"
+            f"{label_role}: {role_label}"
         )
-        markup = kb_profile("client", None)
+        markup = kb_profile("client", None, user.language)
 
     else:
-        text = "👤 Профиль модератора"
-        markup = kb_profile("moderator", None)
+        text = texts.tr(user.language, "👤 Moderator profile", "👤 Профіль модератора")
+        markup = kb_profile("moderator", None, user.language)
 
     try:
         await call.message.edit_text(text, reply_markup=markup)
@@ -92,14 +103,14 @@ async def change_role_menu(call: CallbackQuery):
         return
 
     text = (
-        "🔁 Смена роли\n\n"
-        "Выберите роль. Профили сохранятся."
+        f"{texts.tr(user.language, '🔁 Change role', '🔁 Зміна ролі')}\n\n"
+        f"{texts.tr(user.language, 'Choose a role. Profiles will be kept.', 'Оберіть роль. Профілі збережуться.')}"
     )
 
     try:
-        await call.message.edit_text(text, reply_markup=kb_change_role_confirm())
+        await call.message.edit_text(text, reply_markup=kb_change_role_confirm(user.language))
     except:
-        await call.message.answer(text, reply_markup=kb_change_role_confirm())
+        await call.message.answer(text, reply_markup=kb_change_role_confirm(user.language))
 
     await call.answer()
 
@@ -130,11 +141,11 @@ async def profile_set_role(call: CallbackQuery):
     )
 
     user = await get_user_by_telegram_id(tg.id)
-    markup = await get_menu_markup_for_user(user) if user else kb_main_menu(new_role)
+    markup = await get_menu_markup_for_user(user) if user else kb_main_menu(new_role, user.language if user else None)
 
     try:
-        await call.message.edit_text("✅ Роль изменена.", reply_markup=markup)
+        await call.message.edit_text(texts.tr(user.language, "✅ Role updated.", "✅ Роль змінено."), reply_markup=markup)
     except:
-        await call.message.answer("✅ Роль изменена.", reply_markup=markup)
+        await call.message.answer(texts.tr(user.language, "✅ Role updated.", "✅ Роль змінено."), reply_markup=markup)
 
     await call.answer()

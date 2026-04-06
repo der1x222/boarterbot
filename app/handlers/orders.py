@@ -12,8 +12,15 @@ from app.menu_utils import get_menu_markup_for_user
 from app.states import CreateOrder, DealChange, EditOrder, EditorProposal, DealChat, DisputeChat, DisputeOpenReason, ChatRequest
 from app.order_repo import create_order, list_orders_for_client, get_order_for_client, accept_order, get_order_by_id, update_order_if_open, open_dispute, set_dispute_agree, close_dispute
 from app.profile_repo import get_editor_profile
+from app import texts
 
 router = Router()
+
+def _t(user, en: str, ua: str) -> str:
+    return texts.tr(getattr(user, "language", None), en, ua)
+
+def _tl(lang: str | None, en: str, ua: str) -> str:
+    return texts.tr(lang, en, ua)
 
 # ---------- helpers for clean chat ----------
 
@@ -64,10 +71,10 @@ async def send_clean_from_call(call: CallbackQuery, state: FSMContext, text: str
 async def create_order_start(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(texts.tr(None, "Type /start", "Натисніть /start"), show_alert=True)
         return
     if user.role != "client":
-        await call.answer("Создание заказа доступно только заказчику.", show_alert=True)
+        await call.answer(texts.tr(user.language, "Only clients can create orders.", "Створення замовлення доступне лише замовнику."), show_alert=True)
         return
 
     await state.clear()
@@ -76,19 +83,19 @@ async def create_order_start(call: CallbackQuery, state: FSMContext):
     await send_clean_from_call(
         call,
         state,
-        "Введите название заказа:",
-        reply_markup=kb_nav_menu_help(back="order:back:menu"),
+        texts.tr(user.language, "Enter order title:", "Введіть назву замовлення:"),
+        reply_markup=kb_nav_menu_help(back="order:back:menu", lang=user.language),
     )
 
 @router.callback_query(F.data.startswith("order:back:"))
 async def create_order_back(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(texts.tr(None, "Type /start", "Натисніть /start"), show_alert=True)
         return
     if user.role != "client":
         await state.clear()
-        await call.message.answer("Создание заказа доступно только заказчику.")
+        await call.message.answer(texts.tr(user.language, "Only clients can create orders.", "Створення замовлення доступне лише замовнику."))
         await call.answer()
         return
 
@@ -100,7 +107,7 @@ async def create_order_back(call: CallbackQuery, state: FSMContext):
         await send_clean_from_call(
             call,
             state,
-            "Меню:",
+            texts.tr(user.language, "Menu:", "Меню:"),
             reply_markup=await get_menu_markup_for_user(user),
         )
         return
@@ -110,8 +117,8 @@ async def create_order_back(call: CallbackQuery, state: FSMContext):
         await send_clean_from_call(
             call,
             state,
-            "Введите название заказа:",
-            reply_markup=kb_nav_menu_help(back="order:back:menu"),
+            texts.tr(user.language, "Enter order title:", "Введіть назву замовлення:"),
+            reply_markup=kb_nav_menu_help(back="order:back:menu", lang=user.language),
         )
         return
 
@@ -120,8 +127,8 @@ async def create_order_back(call: CallbackQuery, state: FSMContext):
         await send_clean_from_call(
             call,
             state,
-            "Опишите задачу и требования (можно ссылкой):",
-            reply_markup=kb_nav_menu_help(back="order:back:title"),
+            texts.tr(user.language, "Describe the task and requirements (you can include a link):", "Опишіть задачу і вимоги (можна з посиланням):"),
+            reply_markup=kb_nav_menu_help(back="order:back:title", lang=user.language),
         )
         return
 
@@ -130,8 +137,8 @@ async def create_order_back(call: CallbackQuery, state: FSMContext):
         await send_clean_from_call(
             call,
             state,
-            "Укажите бюджет в долларах (число). Например: 50",
-            reply_markup=kb_nav_menu_help(back="order:back:description"),
+            texts.tr(user.language, "Enter budget in USD (number). Example: 50", "Вкажіть бюджет у доларах (число). Наприклад: 50"),
+            reply_markup=kb_nav_menu_help(back="order:back:description", lang=user.language),
         )
         return
 
@@ -140,8 +147,8 @@ async def create_order_back(call: CallbackQuery, state: FSMContext):
         await send_clean_from_call(
             call,
             state,
-            "Укажите цену за правки (в долларах, число). Например: 10",
-            reply_markup=kb_nav_menu_help(back="order:back:budget"),
+            texts.tr(user.language, "Enter revision price in USD (number). Example: 10", "Вкажіть ціну за правки (у доларах, число). Наприклад: 10"),
+            reply_markup=kb_nav_menu_help(back="order:back:budget", lang=user.language),
         )
         return
 
@@ -149,7 +156,7 @@ async def create_order_back(call: CallbackQuery, state: FSMContext):
 async def create_order_cancel(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(texts.tr(None, "Type /start", "Натисніть /start"), show_alert=True)
         return
 
     await state.clear()
@@ -157,7 +164,7 @@ async def create_order_cancel(call: CallbackQuery, state: FSMContext):
     await send_clean_from_call(
         call,
         state,
-        "Ок, отменено.",
+        texts.tr(user.language, "OK, canceled.", "Добре, скасовано."),
         reply_markup=await get_menu_markup_for_user(user),
     )
 
@@ -168,7 +175,7 @@ async def create_order_title(message: Message, state: FSMContext):
         return
     if user.role != "client":
         await state.clear()
-        await message.answer("Создание заказа доступно только заказчику.")
+        await message.answer(texts.tr(user.language, "Only clients can create orders.", "Створення замовлення доступне лише замовнику."))
         return
 
     title = (message.text or "").strip()
@@ -178,8 +185,8 @@ async def create_order_title(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            "Название не должно быть пустым. Введите название заказа:",
-            reply_markup=kb_nav_menu_help(back="order:back:menu"),
+            texts.tr(user.language, "Title cannot be empty. Enter order title:", "Назва не повинна бути порожньою. Введіть назву замовлення:"),
+            reply_markup=kb_nav_menu_help(back="order:back:menu", lang=user.language),
         )
         return
 
@@ -188,8 +195,8 @@ async def create_order_title(message: Message, state: FSMContext):
     await send_clean(
         message,
         state,
-        "Опишите задачу и требования (можно ссылкой):",
-        reply_markup=kb_nav_menu_help(back="order:back:title"),
+        texts.tr(user.language, "Describe the task and requirements (you can include a link):", "Опишіть задачу і вимоги (можна з посиланням):"),
+        reply_markup=kb_nav_menu_help(back="order:back:title", lang=user.language),
     )
 
 @router.message(CreateOrder.waiting_description)
@@ -199,7 +206,7 @@ async def create_order_description(message: Message, state: FSMContext):
         return
     if user.role != "client":
         await state.clear()
-        await message.answer("Создание заказа доступно только заказчику.")
+        await message.answer(texts.tr(user.language, "Only clients can create orders.", "Створення замовлення доступне лише замовнику."))
         return
 
     description = (message.text or "").strip()
@@ -209,8 +216,8 @@ async def create_order_description(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            "Описание не должно быть пустым. Опишите задачу:",
-            reply_markup=kb_nav_menu_help(back="order:back:title"),
+            texts.tr(user.language, "Description cannot be empty. Describe the task:", "Опис не повинен бути порожнім. Опишіть задачу:"),
+            reply_markup=kb_nav_menu_help(back="order:back:title", lang=user.language),
         )
         return
 
@@ -219,8 +226,8 @@ async def create_order_description(message: Message, state: FSMContext):
     await send_clean(
         message,
         state,
-        "Укажите бюджет в долларах (число). Например: 50",
-        reply_markup=kb_nav_menu_help(back="order:back:description"),
+        texts.tr(user.language, "Enter budget in USD (number). Example: 50", "Вкажіть бюджет у доларах (число). Наприклад: 50"),
+        reply_markup=kb_nav_menu_help(back="order:back:description", lang=user.language),
     )
 
 @router.message(CreateOrder.waiting_budget)
@@ -230,7 +237,7 @@ async def create_order_budget(message: Message, state: FSMContext):
         return
     if user.role != "client":
         await state.clear()
-        await message.answer("Создание заказа доступно только заказчику.")
+        await message.answer(texts.tr(user.language, "Only clients can create orders.", "Створення замовлення доступне лише замовнику."))
         return
 
     raw = (message.text or "").strip()
@@ -240,8 +247,8 @@ async def create_order_budget(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            "Бюджет должен быть числом. Например: 50",
-            reply_markup=kb_nav_menu_help(back="order:back:description"),
+            texts.tr(user.language, "Budget must be a number. Example: 50", "Бюджет має бути числом. Наприклад: 50"),
+            reply_markup=kb_nav_menu_help(back="order:back:description", lang=user.language),
         )
         return
 
@@ -250,8 +257,8 @@ async def create_order_budget(message: Message, state: FSMContext):
     await send_clean(
         message,
         state,
-        "Укажите цену за правки (в долларах, число). Например: 10",
-        reply_markup=kb_nav_menu_help(back="order:back:budget"),
+        texts.tr(user.language, "Enter revision price in USD (number). Example: 10", "Вкажіть ціну за правки (у доларах, число). Наприклад: 10"),
+        reply_markup=kb_nav_menu_help(back="order:back:budget", lang=user.language),
     )
 
 @router.message(CreateOrder.waiting_revision_price)
@@ -261,7 +268,7 @@ async def create_order_revision_price(message: Message, state: FSMContext):
         return
     if user.role != "client":
         await state.clear()
-        await message.answer("Создание заказа доступно только заказчику.")
+        await message.answer(texts.tr(user.language, "Only clients can create orders.", "Створення замовлення доступне лише замовнику."))
         return
 
     raw = (message.text or "").strip()
@@ -271,8 +278,8 @@ async def create_order_revision_price(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            "Цена за правки должна быть числом. Например: 10",
-            reply_markup=kb_nav_menu_help(back="order:back:budget"),
+            texts.tr(user.language, "Revision price must be a number. Example: 10", "Ціна за правки має бути числом. Наприклад: 10"),
+            reply_markup=kb_nav_menu_help(back="order:back:budget", lang=user.language),
         )
         return
 
@@ -281,8 +288,8 @@ async def create_order_revision_price(message: Message, state: FSMContext):
     await send_clean(
         message,
         state,
-        "Укажите дедлайн (гггг-мм-дд чч:мм). Например: 2026-03-15 18:30",
-        reply_markup=kb_nav_menu_help(back="order:back:revision_price"),
+        texts.tr(user.language, "Enter deadline (YYYY-MM-DD HH:MM). Example: 2026-03-15 18:30", "Вкажіть дедлайн (рррр-мм-дд гг:хх). Наприклад: 2026-03-15 18:30"),
+        reply_markup=kb_nav_menu_help(back="order:back:revision_price", lang=user.language),
     )
 
 @router.message(CreateOrder.waiting_deadline)
@@ -292,7 +299,7 @@ async def create_order_deadline(message: Message, state: FSMContext):
         return
     if user.role != "client":
         await state.clear()
-        await message.answer("Создание заказа доступно только заказчику.")
+        await message.answer(texts.tr(user.language, "Only clients can create orders.", "Створення замовлення доступне лише замовнику."))
         return
 
     raw = (message.text or "").strip()
@@ -304,8 +311,8 @@ async def create_order_deadline(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            "Дедлайн должен быть в формате гггг-мм-дд чч:мм. Например: 2026-03-15 18:30",
-            reply_markup=kb_nav_menu_help(back="order:back:revision_price"),
+            texts.tr(user.language, "Deadline must be in YYYY-MM-DD HH:MM format. Example: 2026-03-15 18:30", "Дедлайн має бути у форматі рррр-мм-дд гг:хх. Наприклад: 2026-03-15 18:30"),
+            reply_markup=kb_nav_menu_help(back="order:back:revision_price", lang=user.language),
         )
         return
 
@@ -324,7 +331,7 @@ async def create_order_deadline(message: Message, state: FSMContext):
     await clear_last_bot_message(state, message.bot, message.chat.id)
 
     await message.answer(
-        f"✅ Заказ создан. Номер: #{order_id}",
+        texts.tr(user.language, f"✅ Order created. ID: #{order_id}", f"✅ Замовлення створено. Номер: #{order_id}"),
             reply_markup=await get_menu_markup_for_user(user),
     )
 
@@ -332,41 +339,41 @@ async def create_order_deadline(message: Message, state: FSMContext):
 async def my_orders(call: CallbackQuery):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(texts.tr(None, "Type /start", "Натисніть /start"), show_alert=True)
         return
     if user.role != "client":
-        await call.answer("Раздел доступен только заказчику.", show_alert=True)
+        await call.answer(texts.tr(user.language, "This section is for clients only.", "Розділ доступний лише замовнику."), show_alert=True)
         return
 
     orders = await list_orders_for_client(user.id, limit=10)
     if not orders:
-        await call.message.answer("У вас пока нет заказов.", reply_markup=await get_menu_markup_for_user(user))
+        await call.message.answer(texts.tr(user.language, "You have no orders yet.", "У вас поки немає замовлень."), reply_markup=await get_menu_markup_for_user(user))
         await call.answer()
         return
 
-    text = "Ваши заказы:\n\nВыберите заказ для просмотра."
-    await call.message.answer(text, reply_markup=kb_orders_list(orders))
+    text = texts.tr(user.language, "Your orders:\n\nChoose an order to view.", "Ваші замовлення:\n\nОберіть замовлення для перегляду.")
+    await call.message.answer(text, reply_markup=kb_orders_list(orders, user.language))
     await call.answer()
 
 @router.callback_query(F.data.startswith("order:view:"))
 async def order_view(call: CallbackQuery):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(texts.tr(None, "Type /start", "Натисніть /start"), show_alert=True)
         return
     if user.role != "client":
-        await call.answer("Раздел доступен только заказчику.", show_alert=True)
+        await call.answer(texts.tr(user.language, "This section is for clients only.", "Розділ доступний лише замовнику."), show_alert=True)
         return
 
     try:
         order_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Некорректный номер.", show_alert=True)
+        await call.answer(texts.tr(user.language, "Invalid number.", "Некоректний номер."), show_alert=True)
         return
 
     order = await get_order_for_client(order_id, user.id)
     if not order:
-        await call.answer("Заказ не найден.", show_alert=True)
+        await call.answer(texts.tr(user.language, "Order not found.", "Замовлення не знайдено."), show_alert=True)
         return
 
     price = f"{int(order.get('budget_minor') or 0) / 100:.2f} {order.get('currency') or 'USD'}"
@@ -383,31 +390,31 @@ async def order_view(call: CallbackQuery):
 
     allow_edit = order.get("status") == "open" and not order.get("editor_id")
     text = (
-        f"Заказ #{order['id']}\n\n"
-        f"Название: {title}\n"
-        f"Описание: {description}\n"
-        f"Бюджет: {price}\n"
-        f"Цена за правки: {revision_price}\n"
-        f"Статус: {order.get('status')}\n"
-        f"Создан: {created_label}\n"
-        f"Дедлайн: {deadline_label}"
+        f"{texts.tr(user.language, 'Order', 'Замовлення')} #{order['id']}\n\n"
+        f"{texts.tr(user.language, 'Title', 'Назва')}: {title}\n"
+        f"{texts.tr(user.language, 'Description', 'Опис')}: {description}\n"
+        f"{texts.tr(user.language, 'Budget', 'Бюджет')}: {price}\n"
+        f"{texts.tr(user.language, 'Revision price', 'Ціна за правки')}: {revision_price}\n"
+        f"{texts.tr(user.language, 'Status', 'Статус')}: {order.get('status')}\n"
+        f"{texts.tr(user.language, 'Created', 'Створено')}: {created_label}\n"
+        f"{texts.tr(user.language, 'Deadline', 'Дедлайн')}: {deadline_label}"
     )
 
-    await call.message.answer(text, reply_markup=kb_order_detail(order_id, allow_edit=allow_edit))
+    await call.message.answer(text, reply_markup=kb_order_detail(order_id, allow_edit=allow_edit, lang=user.language))
     await call.answer()
 
 @router.callback_query(F.data == "order_edit:cancel")
 async def order_edit_cancel(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(texts.tr(None, "Type /start", "Натисніть /start"), show_alert=True)
         return
     await state.clear()
     await call.answer()
     await send_clean_from_call(
         call,
         state,
-        "Меню:",
+        texts.tr(user.language, "Menu:", "Меню:"),
         reply_markup=await get_menu_markup_for_user(user),
     )
 
@@ -415,21 +422,21 @@ async def order_edit_cancel(call: CallbackQuery, state: FSMContext):
 async def order_edit_start(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(texts.tr(None, "Type /start", "Натисніть /start"), show_alert=True)
         return
     if user.role != "client":
-        await call.answer("Раздел доступен только заказчику.", show_alert=True)
+        await call.answer(texts.tr(user.language, "This section is for clients only.", "Розділ доступний лише замовнику."), show_alert=True)
         return
 
     try:
         order_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Некорректный номер.", show_alert=True)
+        await call.answer(texts.tr(user.language, "Invalid number.", "Некоректний номер."), show_alert=True)
         return
 
     order = await get_order_for_client(order_id, user.id)
     if not order or order.get('status') != 'open' or order.get('editor_id'):
-        await call.answer("Заказ нельзя редактировать.", show_alert=True)
+        await call.answer(texts.tr(user.language, "Order cannot be edited.", "Замовлення не можна редагувати."), show_alert=True)
         return
 
     await state.clear()
@@ -439,8 +446,8 @@ async def order_edit_start(call: CallbackQuery, state: FSMContext):
     await send_clean_from_call(
         call,
         state,
-        f"Введите новое название заказа (текущее: {order.get('title') or '-'}):",
-        reply_markup=kb_nav_menu_help(back="order_edit:cancel"),
+        texts.tr(user.language, f"Enter new order title (current: {order.get('title') or '-'})", f"Введіть нову назву замовлення (поточна: {order.get('title') or '-'})"),
+        reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
     )
 
 @router.message(EditOrder.waiting_title)
@@ -450,7 +457,7 @@ async def order_edit_title(message: Message, state: FSMContext):
         return
     if user.role != "client":
         await state.clear()
-        await message.answer("Создание заказа доступно только заказчику.")
+        await message.answer(_t(user, "Only clients can create orders.", "Створення замовлення доступне лише замовнику."))
         return
 
     title = (message.text or "").strip()
@@ -459,8 +466,8 @@ async def order_edit_title(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            "Название не должно быть пустым.",
-            reply_markup=kb_nav_menu_help(back="order_edit:cancel"),
+            _t(user, "Title cannot be empty.", "Назва не повинна бути порожньою."),
+            reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
         )
         return
 
@@ -469,8 +476,8 @@ async def order_edit_title(message: Message, state: FSMContext):
     await send_clean(
         message,
         state,
-        "Опишите задачу и требования (можно ссылкой):",
-        reply_markup=kb_nav_menu_help(back="order_edit:cancel"),
+        _t(user, "Describe the task and requirements (you can include a link):", "Опишіть задачу і вимоги (можна з посиланням):"),
+        reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
     )
 
 @router.message(EditOrder.waiting_description)
@@ -480,7 +487,7 @@ async def order_edit_description(message: Message, state: FSMContext):
         return
     if user.role != "client":
         await state.clear()
-        await message.answer("Создание заказа доступно только заказчику.")
+        await message.answer(_t(user, "Only clients can create orders.", "Створення замовлення доступне лише замовнику."))
         return
 
     description = (message.text or "").strip()
@@ -489,8 +496,8 @@ async def order_edit_description(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            "Описание не должно быть пустым.",
-            reply_markup=kb_nav_menu_help(back="order_edit:cancel"),
+            _t(user, "Description cannot be empty.", "Опис не повинен бути порожнім."),
+            reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
         )
         return
 
@@ -499,8 +506,8 @@ async def order_edit_description(message: Message, state: FSMContext):
     await send_clean(
         message,
         state,
-        "Укажите бюджет в долларах (число). Например: 50",
-        reply_markup=kb_nav_menu_help(back="order_edit:cancel"),
+        _t(user, "Enter budget in USD (number). Example: 50", "Вкажіть бюджет у доларах (число). Наприклад: 50"),
+        reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
     )
 
 @router.message(EditOrder.waiting_budget)
@@ -510,7 +517,7 @@ async def order_edit_budget(message: Message, state: FSMContext):
         return
     if user.role != "client":
         await state.clear()
-        await message.answer("Создание заказа доступно только заказчику.")
+        await message.answer(_t(user, "Only clients can create orders.", "Створення замовлення доступне лише замовнику."))
         return
 
     raw = (message.text or "").strip()
@@ -519,8 +526,8 @@ async def order_edit_budget(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            "Бюджет должен быть числом. Например: 50",
-            reply_markup=kb_nav_menu_help(back="order_edit:cancel"),
+            _t(user, "Budget must be a number. Example: 50", "Бюджет має бути числом. Наприклад: 50"),
+            reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
         )
         return
 
@@ -529,8 +536,8 @@ async def order_edit_budget(message: Message, state: FSMContext):
     await send_clean(
         message,
         state,
-        "Укажите цену за правки (в долларах, число). Например: 10",
-        reply_markup=kb_nav_menu_help(back="order_edit:cancel"),
+        _t(user, "Enter revision price in USD (number). Example: 10", "Вкажіть ціну за правки (у доларах, число). Наприклад: 10"),
+        reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
     )
 
 @router.message(EditOrder.waiting_revision_price)
@@ -540,7 +547,7 @@ async def order_edit_revision_price(message: Message, state: FSMContext):
         return
     if user.role != "client":
         await state.clear()
-        await message.answer("Создание заказа доступно только заказчику.")
+        await message.answer(_t(user, "Only clients can create orders.", "Створення замовлення доступне лише замовнику."))
         return
 
     raw = (message.text or "").strip()
@@ -549,8 +556,8 @@ async def order_edit_revision_price(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            "Цена за правки должна быть числом. Например: 10",
-            reply_markup=kb_nav_menu_help(back="order_edit:cancel"),
+            _t(user, "Revision price must be a number. Example: 10", "Ціна за правки має бути числом. Наприклад: 10"),
+            reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
         )
         return
 
@@ -559,8 +566,8 @@ async def order_edit_revision_price(message: Message, state: FSMContext):
     await send_clean(
         message,
         state,
-        "Укажите дедлайн (гггг-мм-дд чч:мм). Например: 2026-03-15 18:30",
-        reply_markup=kb_nav_menu_help(back="order_edit:cancel"),
+        _t(user, "Enter deadline (YYYY-MM-DD HH:MM). Example: 2026-03-15 18:30", "Вкажіть дедлайн (рррр-мм-дд гг:хх). Наприклад: 2026-03-15 18:30"),
+        reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
     )
 
 @router.message(EditOrder.waiting_deadline)
@@ -570,7 +577,7 @@ async def order_edit_deadline(message: Message, state: FSMContext):
         return
     if user.role != "client":
         await state.clear()
-        await message.answer("Создание заказа доступно только заказчику.")
+        await message.answer(_t(user, "Only clients can create orders.", "Створення замовлення доступне лише замовнику."))
         return
 
     raw = (message.text or "").strip()
@@ -582,8 +589,8 @@ async def order_edit_deadline(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            "Дедлайн должен быть в формате гггг-мм-дд чч:мм. Например: 2026-03-15 18:30",
-            reply_markup=kb_nav_menu_help(back="order_edit:cancel"),
+            _t(user, "Deadline must be in YYYY-MM-DD HH:MM format. Example: 2026-03-15 18:30", "Дедлайн має бути у форматі рррр-мм-дд гг:хх. Наприклад: 2026-03-15 18:30"),
+            reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
         )
         return
 
@@ -602,35 +609,35 @@ async def order_edit_deadline(message: Message, state: FSMContext):
     await state.clear()
 
     if not ok:
-        await message.answer("Заказ нельзя редактировать. Возможно, на него уже откликнулись.")
+        await message.answer(_t(user, "Order cannot be edited. It may already have proposals.", "Замовлення не можна редагувати. Можливо, на нього вже відгукнулись."))
         return
 
-    await message.answer("✅ Заказ обновлен.", reply_markup=await get_menu_markup_for_user(user))
+    await message.answer(_t(user, "✅ Order updated.", "✅ Замовлення оновлено."), reply_markup=await get_menu_markup_for_user(user))
 
 @router.callback_query(F.data.startswith("order:details:"))
 async def order_details_for_editor(call: CallbackQuery):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "Натисніть /start"), show_alert=True)
         return
     if user.role != "editor":
-        await call.answer("Доступно только монтажёрам.", show_alert=True)
+        await call.answer(_t(user, "Editors only.", "Доступно лише монтажерам."), show_alert=True)
         return
 
     p = await get_editor_profile(user.id)
     if not p or p.get("verification_status") != "verified":
-        await call.answer("⛔ Сначала пройдите верификацию.", show_alert=True)
+        await call.answer(_t(user, "⛔ Please verify first.", "⛔ Спочатку пройдіть верифікацію."), show_alert=True)
         return
 
     try:
         order_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Некорректный номер.", show_alert=True)
+        await call.answer(_t(user, "Invalid number.", "Некоректний номер."), show_alert=True)
         return
 
     order = await get_order_by_id(order_id)
     if not order or order.get('status') != 'open' or order.get('editor_id'):
-        await call.answer("Заказ недоступен.", show_alert=True)
+        await call.answer(_t(user, "Order not available.", "Замовлення недоступне."), show_alert=True)
         return
 
     price = f"{int(order.get('budget_minor') or 0) / 100:.2f} {order.get('currency') or 'USD'}"
@@ -646,16 +653,16 @@ async def order_details_for_editor(call: CallbackQuery):
         description = description[:1497] + '...'
 
     text = (
-        f"Заказ #{order['id']}\n\n"
-        f"Название: {title}\n"
-        f"Описание: {description}\n"
-        f"Бюджет: {price}\n"
-        f"Цена за правки: {revision_price}\n"
-        f"Создан: {created_label}\n"
-        f"Дедлайн: {deadline_label}"
+        f"{_t(user, 'Order', 'Замовлення')} #{order['id']}\n\n"
+        f"{_t(user, 'Title', 'Назва')}: {title}\n"
+        f"{_t(user, 'Description', 'Опис')}: {description}\n"
+        f"{_t(user, 'Budget', 'Бюджет')}: {price}\n"
+        f"{_t(user, 'Revision price', 'Ціна за правки')}: {revision_price}\n"
+        f"{_t(user, 'Created', 'Створено')}: {created_label}\n"
+        f"{_t(user, 'Deadline', 'Дедлайн')}: {deadline_label}"
     )
 
-    await call.message.answer(text, reply_markup=kb_editor_order_detail(order_id))
+    await call.message.answer(text, reply_markup=kb_editor_order_detail(order_id, user.language))
     await call.answer()
 
 
@@ -663,33 +670,33 @@ async def order_details_for_editor(call: CallbackQuery):
 async def order_chat_request(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "Натисніть /start"), show_alert=True)
         return
     if user.role != "editor":
-        await call.answer("Доступно только монтажерам.", show_alert=True)
+        await call.answer(_t(user, "Editors only.", "Доступно лише монтажерам."), show_alert=True)
         return
 
     p = await get_editor_profile(user.id)
     if not p or p.get("verification_status") != "verified":
-        await call.answer("⛔ Сначала пройдите верификацию.", show_alert=True)
+        await call.answer(_t(user, "⛔ Please verify first.", "⛔ Спочатку пройдіть верифікацію."), show_alert=True)
         return
 
     try:
         order_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Некорректный номер.", show_alert=True)
+        await call.answer(_t(user, "Invalid number.", "Некоректний номер."), show_alert=True)
         return
 
     order = await get_order_by_id(order_id)
     if not order or order.get('status') != 'open' or order.get('editor_id'):
-        await call.answer("Заказ недоступен.", show_alert=True)
+        await call.answer(_t(user, "Order not available.", "Замовлення недоступне."), show_alert=True)
         return
 
     await state.clear()
     await state.set_state(ChatRequest.waiting_text)
     await state.update_data(order_id=order_id)
     await call.answer()
-    await call.message.answer("Напишите текст запроса на чат для заказчика:")
+    await call.message.answer(_t(user, "Write a chat request to the client:", "Напишіть текст запиту на чат для замовника:"))
 
 @router.message(ChatRequest.waiting_text)
 async def order_chat_request_text(message: Message, state: FSMContext):
@@ -698,12 +705,12 @@ async def order_chat_request_text(message: Message, state: FSMContext):
         return
     if user.role != "editor":
         await state.clear()
-        await message.answer("Доступно только монтажерам.")
+        await message.answer(_t(user, "Editors only.", "Доступно лише монтажерам."))
         return
 
     text = (message.text or "").strip()
     if not text:
-        await message.answer("Текст не должен быть пустым.")
+        await message.answer(_t(user, "Text cannot be empty.", "Текст не повинен бути порожнім."))
         return
 
     data = await state.get_data()
@@ -711,7 +718,7 @@ async def order_chat_request_text(message: Message, state: FSMContext):
     order = await get_order_by_id(order_id)
     if not order or order.get('status') != 'open' or order.get('editor_id'):
         await state.clear()
-        await message.answer("Заказ недоступен.")
+        await message.answer(_t(user, "Order not available.", "Замовлення недоступне."))
         return
 
     client = await get_user_by_id(int(order['client_id']))
@@ -720,43 +727,43 @@ async def order_chat_request_text(message: Message, state: FSMContext):
         editor_username = f"@{user.username}" if user.username else ""
         await message.bot.send_message(
             client.telegram_id,
-            f"Запрос на чат по заказу #{order_id} от {editor_name} {editor_username}:\n{text}",
+            _t(client, f"Chat request for order #{order_id} from {editor_name} {editor_username}:\n{text}", f"Запит на чат по замовленню #{order_id} від {editor_name} {editor_username}:\n{text}"),
         )
 
     await state.clear()
-    await message.answer("Запрос отправлен заказчику.")
+    await message.answer(_t(user, "Request sent to the client.", "Запит надіслано замовнику."))
 
 @router.callback_query(F.data.startswith("order:proposal:"))
 async def order_proposal_start(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "Натисніть /start"), show_alert=True)
         return
     if user.role != "editor":
-        await call.answer("Доступно только монтажерам.", show_alert=True)
+        await call.answer(_t(user, "Editors only.", "Доступно лише монтажерам."), show_alert=True)
         return
 
     p = await get_editor_profile(user.id)
     if not p or p.get("verification_status") != "verified":
-        await call.answer("⛔ Сначала пройдите верификацию.", show_alert=True)
+        await call.answer(_t(user, "⛔ Please verify first.", "⛔ Спочатку пройдіть верифікацію."), show_alert=True)
         return
 
     try:
         order_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Некорректный номер.", show_alert=True)
+        await call.answer(_t(user, "Invalid number.", "Некоректний номер."), show_alert=True)
         return
 
     order = await get_order_by_id(order_id)
     if not order or order.get('status') != 'open' or order.get('editor_id'):
-        await call.answer("Заказ недоступен.", show_alert=True)
+        await call.answer(_t(user, "Order not available.", "Замовлення недоступне."), show_alert=True)
         return
 
     await state.clear()
     await state.set_state(EditorProposal.waiting_price)
     await state.update_data(order_id=order_id)
     await call.answer()
-    await call.message.answer("Укажите вашу цену в долларах (число). Например: 80")
+    await call.message.answer(_t(user, "Enter your price in USD (number). Example: 80", "Вкажіть вашу ціну в доларах (число). Наприклад: 80"))
 
 @router.message(EditorProposal.waiting_price)
 async def order_proposal_price(message: Message, state: FSMContext):
@@ -765,17 +772,17 @@ async def order_proposal_price(message: Message, state: FSMContext):
         return
     if user.role != "editor":
         await state.clear()
-        await message.answer("Доступно только монтажерам.")
+        await message.answer(_t(user, "Editors only.", "Доступно лише монтажерам."))
         return
 
     raw = (message.text or "").strip()
     if not raw.isdigit():
-        await message.answer("Цена должна быть числом. Например: 80")
+        await message.answer(_t(user, "Price must be a number. Example: 80", "Ціна має бути числом. Наприклад: 80"))
         return
 
     await state.update_data(proposal_price=int(raw) * 100)
     await state.set_state(EditorProposal.waiting_comment)
-    await message.answer("Короткий комментарий к предложению (можно одним сообщением).")
+    await message.answer(_t(user, "Short comment for the proposal (single message).", "Короткий коментар до пропозиції (можна одним повідомленням)."))
 
 @router.message(EditorProposal.waiting_comment)
 async def order_proposal_comment(message: Message, state: FSMContext):
@@ -784,12 +791,12 @@ async def order_proposal_comment(message: Message, state: FSMContext):
         return
     if user.role != "editor":
         await state.clear()
-        await message.answer("Доступно только монтажерам.")
+        await message.answer(_t(user, "Editors only.", "Доступно лише монтажерам."))
         return
 
     comment = (message.text or "").strip()
     if not comment:
-        await message.answer("Напишите короткий комментарий.")
+        await message.answer(_t(user, "Write a short comment.", "Напишіть короткий коментар."))
         return
 
     data = await state.get_data()
@@ -797,7 +804,7 @@ async def order_proposal_comment(message: Message, state: FSMContext):
     order = await get_order_by_id(order_id)
     if not order or order.get('status') != 'open' or order.get('editor_id'):
         await state.clear()
-        await message.answer("Заказ недоступен.")
+        await message.answer(_t(user, "Order not available.", "Замовлення недоступне."))
         return
 
     client = await get_user_by_id(int(order['client_id']))
@@ -807,118 +814,118 @@ async def order_proposal_comment(message: Message, state: FSMContext):
         editor_username = f"@{user.username}" if user.username else ""
         await message.bot.send_message(
             client.telegram_id,
-            f"Предложение по заказу #{order_id} от {editor_name} {editor_username}:\n"
-            f"Цена: {price}\n"
-            f"Комментарий: {comment}",
-            reply_markup=kb_proposal_actions(order_id, user.id),
+            _t(client, f"Proposal for order #{order_id} from {editor_name} {editor_username}:\n", f"Пропозиція по замовленню #{order_id} від {editor_name} {editor_username}:\n")
+            + _t(client, f"Price: {price}\n", f"Ціна: {price}\n")
+            + _t(client, f"Comment: {comment}", f"Коментар: {comment}"),
+            reply_markup=kb_proposal_actions(order_id, user.id, client.language),
         )
 
     await state.clear()
-    await message.answer("Предложение отправлено заказчику.")
+    await message.answer(_t(user, "Proposal sent to the client.", "Пропозицію надіслано замовнику."))
 
 @router.callback_query(F.data.startswith("proposal:accept:"))
 async def proposal_accept(call: CallbackQuery):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "Натисніть /start"), show_alert=True)
         return
     if user.role != "client":
-        await call.answer("Доступно только заказчику.", show_alert=True)
+        await call.answer(_t(user, "Clients only.", "Доступно лише замовнику."), show_alert=True)
         return
 
     parts = call.data.split(":")
     if len(parts) != 4:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
 
     try:
         order_id = int(parts[2])
         editor_id = int(parts[3])
     except ValueError:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
 
     order = await get_order_by_id(order_id)
     if not order or order.get("client_id") != user.id:
-        await call.answer("Заказ не найден.", show_alert=True)
+        await call.answer(_t(user, "Order not found.", "Замовлення не знайдено."), show_alert=True)
         return
     if order.get("status") != "open" or order.get("editor_id"):
-        await call.answer("Заказ недоступен.", show_alert=True)
+        await call.answer(_t(user, "Order not available.", "Замовлення недоступне."), show_alert=True)
         return
 
     ok = await accept_order(order_id, editor_id)
     if not ok:
-        await call.answer("Не удалось принять заказ.", show_alert=True)
+        await call.answer(_t(user, "Failed to accept the order.", "Не вдалося прийняти замовлення."), show_alert=True)
         return
 
     editor = await get_user_by_id(editor_id)
     if editor:
         await call.bot.send_message(
             editor.telegram_id,
-            f"Заказ #{order_id} принят заказчиком.",
-            reply_markup=kb_deal_menu(order_id),
+            _t(editor, f"Order #{order_id} accepted by the client.", f"Замовлення #{order_id} прийнято замовником."),
+            reply_markup=kb_deal_menu(order_id, editor.language),
         )
 
-    await call.answer("Заказ принят.", show_alert=True)
+    await call.answer(_t(user, "Order accepted.", "Замовлення прийнято."), show_alert=True)
 
 @router.callback_query(F.data.startswith("proposal:reject:"))
 async def proposal_reject(call: CallbackQuery):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "Натисніть /start"), show_alert=True)
         return
     if user.role != "client":
-        await call.answer("Доступно только заказчику.", show_alert=True)
+        await call.answer(_t(user, "Clients only.", "Доступно лише замовнику."), show_alert=True)
         return
 
     parts = call.data.split(":")
     if len(parts) != 4:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
 
     try:
         order_id = int(parts[2])
         editor_id = int(parts[3])
     except ValueError:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "Невірні дані."), show_alert=True)
         return
 
     order = await get_order_by_id(order_id)
     if not order or order.get("client_id") != user.id:
-        await call.answer("Заказ не найден.", show_alert=True)
+        await call.answer(_t(user, "Order not found.", "Замовлення не знайдено."), show_alert=True)
         return
 
     editor = await get_user_by_id(editor_id)
     if editor:
-        await call.bot.send_message(editor.telegram_id, f"Заказчик отклонил предложение по заказу #{order_id}.")
+        await call.bot.send_message(editor.telegram_id, _t(editor, f"Client rejected your proposal for order #{order_id}.", f"Замовник відхилив пропозицію по замовленню #{order_id}."))
 
-    await call.answer("Отклонено.", show_alert=True)
+    await call.answer(_t(user, "Rejected.", "Відхилено."), show_alert=True)
 
 @router.callback_query(F.data.startswith("proposal:chat:"))
 async def proposal_chat(call: CallbackQuery):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "????????? /start"), show_alert=True)
         return
     if user.role != "client":
-        await call.answer("Доступно только заказчику.", show_alert=True)
+        await call.answer(_t(user, "Clients only.", "???????? ???? ?????????."), show_alert=True)
         return
 
     parts = call.data.split(":")
     if len(parts) != 4:
-        await call.answer("Неверные данные.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "??????? ????."), show_alert=True)
         return
 
     try:
         order_id = int(parts[2])
         editor_id = int(parts[3])
     except ValueError:
-        await call.answer("Неверные даннеые.", show_alert=True)
+        await call.answer(_t(user, "Invalid data.", "??????? ????."), show_alert=True)
         return
 
     order = await get_order_by_id(order_id)
     if not order or order.get("client_id") != user.id:
-        await call.answer("Заказ не найден.", show_alert=True)
+        await call.answer(_t(user, "Order not found.", "?????????? ?? ????????."), show_alert=True)
         return
 
     editor = await get_user_by_id(editor_id)
@@ -927,37 +934,41 @@ async def proposal_chat(call: CallbackQuery):
         client_username = f"@{user.username}" if user.username else ""
         await call.bot.send_message(
             editor.telegram_id,
-            f"Заказчик {client_name} {client_username} хочет начать чат по заказу #{order_id}.",
+            _t(
+                editor,
+                f"Client {client_name} {client_username} wants to start a chat about order #{order_id}.",
+                f"???????? {client_name} {client_username} ???? ?????? ??? ?? ?????????? #{order_id}.",
+            ),
         )
 
-    await call.answer("Запрос отправлен эдитору.", show_alert=True)
+    await call.answer(_t(user, "Request sent to the editor.", "????? ????????? ?????????."), show_alert=True)
 
 @router.callback_query(F.data.startswith("deal:change:"))
 async def deal_change_start(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "????????? /start"), show_alert=True)
         return
     if user.role != "editor":
-        await call.answer("Доступно только монтажёрам.", show_alert=True)
+        await call.answer(_t(user, "Editors only.", "???????? ???? ??????????."), show_alert=True)
         return
 
     try:
         order_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Некорректный номер.", show_alert=True)
+        await call.answer(_t(user, "Invalid number.", "??????????? ?????."), show_alert=True)
         return
 
     order = await get_order_by_id(order_id)
     if not order or order.get("editor_id") != user.id:
-        await call.answer("Заказ не найден.", show_alert=True)
+        await call.answer(_t(user, "Order not found.", "?????????? ?? ????????."), show_alert=True)
         return
 
     await state.clear()
     await state.set_state(DealChange.waiting_text)
     await state.update_data(order_id=order_id)
     await call.answer()
-    await call.message.answer("Опишите что нужно изменить:")
+    await call.message.answer(_t(user, "Describe what needs to be changed:", "??????? ?? ???????? ???????:"))
 
 @router.message(DealChange.waiting_text)
 async def deal_change_submit(message: Message, state: FSMContext):
@@ -966,12 +977,12 @@ async def deal_change_submit(message: Message, state: FSMContext):
         return
     if user.role != "editor":
         await state.clear()
-        await message.answer("Доступно только монтажёрам.")
+        await message.answer(_t(user, "Editors only.", "???????? ???? ??????????."))
         return
 
     text = (message.text or "").strip()
     if not text:
-        await message.answer("Опишите что нужно изменить.")
+        await message.answer(_t(user, "Describe what needs to be changed.", "??????? ?? ???????? ???????."))
         return
 
     data = await state.get_data()
@@ -979,41 +990,45 @@ async def deal_change_submit(message: Message, state: FSMContext):
     order = await get_order_by_id(order_id)
     if not order or order.get("editor_id") != user.id:
         await state.clear()
-        await message.answer("Заказ не найден.")
+        await message.answer(_t(user, "Order not found.", "?????????? ?? ????????."))
         return
 
     client = await get_user_by_id(int(order["client_id"]))
     if client:
         await message.bot.send_message(
             client.telegram_id,
-            f"Запрос на изменение по заказу #{order_id}:\n{text}",
+            _t(
+                    client,
+                    f"Change request for order #{order_id}:\n{text}",
+                    f"Запит на зміну по замовленню #{order_id}:\n{text}",
+                ),
         )
 
     await state.clear()
-    await message.answer("Отправлено заказчику.")
+    await message.answer(_t(user, "Sent to the client.", "????????? ?????????."))
 
 @router.callback_query(F.data.startswith("order:menu:"))
 async def order_menu_open(call: CallbackQuery):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "????????? /start"), show_alert=True)
         return
     if user.role != "editor":
-        await call.answer("Доступно только монтажёрам.", show_alert=True)
+        await call.answer(_t(user, "Editors only.", "???????? ???? ??????????."), show_alert=True)
         return
 
     try:
         order_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Некорректный номер.", show_alert=True)
+        await call.answer(_t(user, "Invalid number.", "??????????? ?????."), show_alert=True)
         return
 
     order = await get_order_by_id(order_id)
     if not order or order.get("editor_id") != user.id:
-        await call.answer("Заказ не найден.", show_alert=True)
+        await call.answer(_t(user, "Order not found.", "?????????? ?? ????????."), show_alert=True)
         return
 
-    await call.message.answer("Меню заказа:", reply_markup=kb_deal_menu(order_id))
+    await call.message.answer(_t(user, "Order menu:", "???? ??????????:"), reply_markup=kb_deal_menu(order_id, user.language))
     await call.answer()
 
 # ---------- deal chat & dispute ----------
@@ -1084,62 +1099,62 @@ async def _activate_deal_chat_for_user(
 async def deal_menu_open(call: CallbackQuery):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "????????? /start"), show_alert=True)
         return
     try:
         order_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Некорректный номер.", show_alert=True)
+        await call.answer(_t(user, "Invalid number.", "??????????? ?????."), show_alert=True)
         return
 
     order = await get_order_by_id(order_id)
     if not order or user.id not in (order.get("client_id"), order.get("editor_id")):
-        await call.answer("Нет доступа.", show_alert=True)
+        await call.answer(_t(user, "No access.", "????? ???????."), show_alert=True)
         return
 
     await call.answer()
-    await call.message.answer("Меню заказа:", reply_markup=kb_deal_menu(order_id))
+    await call.message.answer(_t(user, "Order menu:", "???? ??????????:"), reply_markup=kb_deal_menu(order_id, user.language))
 
 @router.callback_query(F.data.startswith("deal:chat:exit:"))
 async def deal_chat_exit(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "????????? /start"), show_alert=True)
         return
     try:
         order_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Некорректный номер.", show_alert=True)
+        await call.answer(_t(user, "Invalid number.", "??????????? ?????."), show_alert=True)
         return
 
     await state.clear()
     await call.answer()
-    await call.message.answer("Чат закрыт.", reply_markup=kb_deal_chat_menu(order_id))
+    await call.message.answer(_t(user, "Chat closed.", "??? ???????."), reply_markup=kb_deal_chat_menu(order_id, user.language))
 
 @router.callback_query(F.data.startswith("deal:chat:start:"))
 async def deal_chat_start(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "????????? /start"), show_alert=True)
         return
 
     try:
         order_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Некорректный номер.", show_alert=True)
+        await call.answer(_t(user, "Invalid number.", "??????????? ?????."), show_alert=True)
         return
 
     order = await get_order_by_id(order_id)
     if not order or not order.get("editor_id"):
-        await call.answer("Сделка не найдена.", show_alert=True)
+        await call.answer(_t(user, "Deal not found.", "????? ?? ????????."), show_alert=True)
         return
 
     if order.get("status") == "dispute":
-        await call.answer("Спор активен. Перейдите в спор.", show_alert=True)
+        await call.answer(_t(user, "Dispute is active. Go to the dispute.", "???? ????????. ????????? ? ????."), show_alert=True)
         return
 
     if user.id not in (order.get("client_id"), order.get("editor_id")):
-        await call.answer("Нет доступа.", show_alert=True)
+        await call.answer(_t(user, "No access.", "????? ???????."), show_alert=True)
         return
 
     await state.clear()
@@ -1147,34 +1162,38 @@ async def deal_chat_start(call: CallbackQuery, state: FSMContext):
     await state.update_data(order_id=order_id)
     await call.answer()
     await call.message.answer(
-        f"Чат по заказу #{order_id}. Пишите сообщение.",
-        reply_markup=kb_deal_chat_controls(order_id),
+            _t(
+                recipient,
+                f"Chat for order #{order_id} from {_user_label(user)}\n{text}",
+                f"Чат по замовленню #{order_id} від {_user_label(user)}\n{text}",
+            ),
+        reply_markup=kb_deal_chat_controls(order_id, user.language),
     )
 
 @router.callback_query(F.data.startswith("deal:chat:link:"))
 async def deal_chat_link_start(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "????????? /start"), show_alert=True)
         return
 
     try:
         order_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Некорректный номер.", show_alert=True)
+        await call.answer(_t(user, "Invalid number.", "??????????? ?????."), show_alert=True)
         return
 
     order = await get_order_by_id(order_id)
     if not order or not order.get("editor_id"):
-        await call.answer("Сделка не найдена.", show_alert=True)
+        await call.answer(_t(user, "Deal not found.", "????? ?? ????????."), show_alert=True)
         return
 
     if order.get("status") == "dispute":
-        await call.answer("Спор активен. Перейдите в спор.", show_alert=True)
+        await call.answer(_t(user, "Dispute is active. Go to the dispute.", "???? ????????. ????????? ? ????."), show_alert=True)
         return
 
     if user.id not in (order.get("client_id"), order.get("editor_id")):
-        await call.answer("Нет доступа.", show_alert=True)
+        await call.answer(_t(user, "No access.", "????? ???????."), show_alert=True)
         return
 
     await state.clear()
@@ -1182,16 +1201,21 @@ async def deal_chat_link_start(call: CallbackQuery, state: FSMContext):
     await state.update_data(order_id=order_id)
     await call.answer()
     await call.message.answer(
-        f"Отправьте ссылку по заказу #{order_id} одним сообщением.\n"
-        "Подсказка: можно отправлять ссылки только на Google Drive, Dropbox, OneDrive, Mega.",
-        reply_markup=kb_deal_chat_link_controls(order_id),
+        _t(
+            user,
+            f"Send a link for order #{order_id} in one message.\n"
+            "Hint: you can send links only to Google Drive, Dropbox, OneDrive, Mega.",
+            f"\u041d\u0430\u0434\u0456\u0441\u043b\u0456\u0442\u044c \u043f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f \u043f\u043e \u0437\u0430\u043c\u043e\u0432\u043b\u0435\u043d\u043d\u044e #{order_id} \u043e\u0434\u043d\u0438\u043c \u043f\u043e\u0432\u0456\u0434\u043e\u043c\u043b\u0435\u043d\u043d\u044f\u043c.\n"
+            "\u041f\u0456\u0434\u043a\u0430\u0437\u043a\u0430: \u043c\u043e\u0436\u043d\u0430 \u043d\u0430\u0434\u0441\u0438\u043b\u0430\u0442\u0438 \u043f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f \u043b\u0438\u0448\u0435 \u043d\u0430 Google Drive, Dropbox, OneDrive, Mega.",
+        ),
+        reply_markup=kb_deal_chat_link_controls(order_id, user.language),
     )
 
 @router.callback_query(F.data.startswith("deal:chat:"))
 async def deal_chat_menu(call: CallbackQuery):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "????????? /start"), show_alert=True)
         return
 
     parts = call.data.split(":")
@@ -1201,16 +1225,16 @@ async def deal_chat_menu(call: CallbackQuery):
     try:
         order_id = int(parts[-1])
     except ValueError:
-        await call.answer("Некорректный номер.", show_alert=True)
+        await call.answer(_t(user, "Invalid number.", "??????????? ?????."), show_alert=True)
         return
 
     order = await get_order_by_id(order_id)
     if not order or user.id not in (order.get("client_id"), order.get("editor_id")):
-        await call.answer("Нет доступа.", show_alert=True)
+        await call.answer(_t(user, "No access.", "????? ???????."), show_alert=True)
         return
 
     await call.answer()
-    await call.message.answer("Меню чата:", reply_markup=kb_deal_chat_menu(order_id))
+    await call.message.answer(_t(user, "Chat menu:", "???? ????:"), reply_markup=kb_deal_chat_menu(order_id, user.language))
 
 @router.message(DealChat.waiting_link)
 async def deal_chat_link_message(message: Message, state: FSMContext):
@@ -1226,36 +1250,46 @@ async def deal_chat_link_message(message: Message, state: FSMContext):
     order = await get_order_by_id(order_id)
     if not order or not order.get("editor_id"):
         await state.clear()
-        await message.answer("Сделка не найдена.")
+        await message.answer(_t(user, "Deal not found.", "????? ?? ????????."))
         return
 
     if order.get("status") == "dispute":
-        await message.answer("Спор активен. Перейдите в спор.")
+        await message.answer(_t(user, "Dispute is active. Go to the dispute.", "???? ????????. ????????? ? ????."))
         return
 
     text = (message.text or "").strip()
     if not text:
-        await message.answer("Отправьте ссылку текстом одним сообщением.")
+        await message.answer(_t(user, "Send the link as a single text message.", "????????? ????????? ????? ????????? ?????????????."))
         return
 
     if user.id not in (order.get("client_id"), order.get("editor_id")):
-        await message.answer("Нет доступа.")
+        await message.answer(_t(user, "No access.", "????? ???????."))
         return
 
     if not _message_has_link(message, text):
         await message.answer(
-            "Это не похоже на ссылку. Отправьте ссылку целиком.\n"
-            "Подсказка: можно отправлять ссылки только на Google Drive, Dropbox, OneDrive, Mega.",
-            reply_markup=kb_deal_chat_link_controls(order_id),
+            _t(
+                user,
+                "This doesn't look like a link. Send the full link.\n"
+                "Hint: you can send links only to Google Drive, Dropbox, OneDrive, Mega.",
+                "\u0426\u0435 \u043d\u0435 \u0441\u0445\u043e\u0436\u0435 \u043d\u0430 \u043f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f. \u041d\u0430\u0434\u0456\u0441\u043b\u0456\u0442\u044c \u043f\u043e\u0432\u043d\u0435 \u043f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f.\n"
+                "\u041f\u0456\u0434\u043a\u0430\u0437\u043a\u0430: \u043c\u043e\u0436\u043d\u0430 \u043d\u0430\u0434\u0441\u0438\u043b\u0430\u0442\u0438 \u043f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f \u043b\u0438\u0448\u0435 \u043d\u0430 Google Drive, Dropbox, OneDrive, Mega.",
+            ),
+            reply_markup=kb_deal_chat_link_controls(order_id, user.language),
         )
         return
 
     urls = _extract_urls(message, text)
     if not urls or any(not _is_allowed_link(u) for u in urls):
         await message.answer(
-            "Ссылка должна быть с допустимого сервиса.\n"
-            "Разрешены: Google Drive, Dropbox, OneDrive, Mega.",
-            reply_markup=kb_deal_chat_link_controls(order_id),
+            _t(
+                user,
+                "Link must be from an allowed service.\n"
+                "Allowed: Google Drive, Dropbox, OneDrive, Mega.",
+                "\u041f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f \u043c\u0430\u0454 \u0431\u0443\u0442\u0438 \u0437 \u0434\u043e\u0437\u0432\u043e\u043b\u0435\u043d\u043e\u0433\u043e \u0441\u0435\u0440\u0432\u0456\u0441\u0443.\n"
+                "\u0414\u043e\u0437\u0432\u043e\u043b\u0435\u043d\u0456: Google Drive, Dropbox, OneDrive, Mega.",
+            ),
+            reply_markup=kb_deal_chat_link_controls(order_id, user.language),
         )
         return
 
@@ -1264,13 +1298,17 @@ async def deal_chat_link_message(message: Message, state: FSMContext):
     if recipient:
         await message.bot.send_message(
             recipient.telegram_id,
-            f"Ссылка по заказу #{order_id} от {_user_label(user)}\n{text}",
-            reply_markup=kb_deal_chat_controls(order_id),
+            _t(
+                recipient,
+                f"Link for order #{order_id} from {_user_label(user)}\n{text}",
+                f"Посилання по замовленню #{order_id} від {_user_label(user)}\n{text}",
+            ),
+            reply_markup=kb_deal_chat_controls(order_id, recipient.language),
         )
         await _activate_deal_chat_for_user(state, message.bot, recipient.telegram_id, order_id)
 
     await state.set_state(DealChat.chatting)
-    await message.answer("Ссылка отправлена.", reply_markup=kb_deal_chat_controls(order_id))
+    await message.answer(_t(user, "Link sent.", "????????? ?????????."), reply_markup=kb_deal_chat_controls(order_id, user.language))
 
 @router.message(DealChat.chatting)
 async def deal_chat_message(message: Message, state: FSMContext):
@@ -1286,15 +1324,15 @@ async def deal_chat_message(message: Message, state: FSMContext):
     order = await get_order_by_id(order_id)
     if not order or not order.get("editor_id"):
         await state.clear()
-        await message.answer("Сделка не найдена.")
+        await message.answer(_t(user, "Deal not found.", "????? ?? ????????."))
         return
 
     if order.get("status") == "dispute":
-        await message.answer("Спор активен. Перейдите в спор.")
+        await message.answer(_t(user, "Dispute is active. Go to the dispute.", "???? ????????. ????????? ? ????."))
         return
 
     if user.id not in (order.get("client_id"), order.get("editor_id")):
-        await message.answer("Нет доступа.")
+        await message.answer(_t(user, "No access.", "????? ???????."))
         return
 
     text = (message.text or "").strip()
@@ -1303,9 +1341,14 @@ async def deal_chat_message(message: Message, state: FSMContext):
 
     if _message_has_link(message, text):
         await message.answer(
-            "Ссылки в чате запрещены. Используйте меню «Отправить ссылку»."
-            "Подсказка: можно отправлять ссылки только на Google Drive, Dropbox, OneDrive, Mega.",
-            reply_markup=kb_deal_chat_controls(order_id),
+            _t(
+                user,
+                "Links are not allowed in chat. Use the Send link menu.\n"
+                "Hint: you can send links only to Google Drive, Dropbox, OneDrive, Mega.",
+                "\u041f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f \u0432 \u0447\u0430\u0442\u0456 \u0437\u0430\u0431\u043e\u0440\u043e\u043d\u0435\u043d\u0456. \u0412\u0438\u043a\u043e\u0440\u0438\u0441\u0442\u043e\u0432\u0443\u0439\u0442\u0435 \u043c\u0435\u043d\u044e \u041d\u0430\u0434\u0456\u0441\u043b\u0430\u0442\u0438 \u043f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f.\n"
+                "\u041f\u0456\u0434\u043a\u0430\u0437\u043a\u0430: \u043c\u043e\u0436\u043d\u0430 \u043d\u0430\u0434\u0441\u0438\u043b\u0430\u0442\u0438 \u043f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f \u043b\u0438\u0448\u0435 \u043d\u0430 Google Drive, Dropbox, OneDrive, Mega.",
+            ),
+            reply_markup=kb_deal_chat_controls(order_id, user.language),
         )
         return
 
@@ -1314,8 +1357,12 @@ async def deal_chat_message(message: Message, state: FSMContext):
     if recipient:
         await message.bot.send_message(
             recipient.telegram_id,
-            f"Чат по заказу #{order_id} от {_user_label(user)}\n{text}",
-            reply_markup=kb_deal_chat_controls(order_id),
+            _t(
+                recipient,
+                f"Chat for order #{order_id} from {_user_label(user)}\n{text}",
+                f"Чат по замовленню #{order_id} від {_user_label(user)}\n{text}",
+            ),
+            reply_markup=kb_deal_chat_controls(order_id, recipient.language),
         )
         await _activate_deal_chat_for_user(state, message.bot, recipient.telegram_id, order_id)
 
@@ -1323,38 +1370,38 @@ async def deal_chat_message(message: Message, state: FSMContext):
 async def dispute_exit(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "????????? /start"), show_alert=True)
         return
     try:
         order_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Некорректный номер.", show_alert=True)
+        await call.answer(_t(user, "Invalid number.", "??????????? ?????."), show_alert=True)
         return
 
     await state.clear()
     await call.answer()
-    await call.message.answer("Вы вышли из спора.", reply_markup=kb_deal_menu(order_id))
+    await call.message.answer(_t(user, "You left the dispute.", "?? ?????? ?? ?????."), reply_markup=kb_deal_menu(order_id, user.language))
 
 @router.callback_query(F.data.startswith("deal:dispute:join:"))
 async def dispute_join(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "????????? /start"), show_alert=True)
         return
 
     try:
         order_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Некорректный номер.", show_alert=True)
+        await call.answer(_t(user, "Invalid number.", "??????????? ?????."), show_alert=True)
         return
 
     order = await get_order_by_id(order_id)
     if not order or order.get("status") != "dispute":
-        await call.answer("Спор не активен.", show_alert=True)
+        await call.answer(_t(user, "Dispute is not active.", "???? ?? ????????."), show_alert=True)
         return
 
     if user.role != "moderator" and user.id not in (order.get("client_id"), order.get("editor_id")):
-        await call.answer("Нет доступа.", show_alert=True)
+        await call.answer(_t(user, "No access.", "????? ???????."), show_alert=True)
         return
 
     await state.clear()
@@ -1362,86 +1409,107 @@ async def dispute_join(call: CallbackQuery, state: FSMContext):
     await state.update_data(order_id=order_id)
     await call.answer()
     await call.message.answer(
-        "Спор открыт. Окончательное решение выносит модератор.\n"
-        "Спор может закрыть модератор или если обе стороны согласятся.",
-        reply_markup=kb_dispute_controls(order_id, is_moderator=(user.role == "moderator")),
+        _t(
+            user,
+            "Dispute opened. Final decision is made by a moderator.\n"
+            "The dispute can be closed by a moderator or if both parties agree.",
+            "\u0421\u043f\u0456\u0440 \u0432\u0456\u0434\u043a\u0440\u0438\u0442\u043e. \u041e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u0435 \u0440\u0456\u0448\u0435\u043d\u043d\u044f \u043f\u0440\u0438\u0439\u043c\u0430\u0454 \u043c\u043e\u0434\u0435\u0440\u0430\u0442\u043e\u0440.\n"
+            "\u0421\u043f\u0456\u0440 \u043c\u043e\u0436\u0435 \u0437\u0430\u043a\u0440\u0438\u0442\u0438 \u043c\u043e\u0434\u0435\u0440\u0430\u0442\u043e\u0440 \u0430\u0431\u043e \u044f\u043a\u0449\u043e \u043e\u0431\u0438\u0434\u0432\u0456 \u0441\u0442\u043e\u0440\u043e\u043d\u0438 \u043f\u043e\u0433\u043e\u0434\u044f\u0442\u044c\u0441\u044f.",
+        ),
+        reply_markup=kb_dispute_controls(order_id, is_moderator=(user.role == "moderator"), lang=user.language),
     )
 
 @router.callback_query(F.data.startswith("deal:dispute:agree:"))
 async def dispute_agree(call: CallbackQuery):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "????????? /start"), show_alert=True)
         return
     if user.role not in ("client", "editor"):
-        await call.answer("Нет доступа.", show_alert=True)
+        await call.answer(_t(user, "No access.", "????? ???????."), show_alert=True)
         return
 
     try:
         order_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Некорректный номер.", show_alert=True)
+        await call.answer(_t(user, "Invalid number.", "??????????? ?????."), show_alert=True)
         return
 
     order = await get_order_by_id(order_id)
     if not order or order.get("status") != "dispute":
-        await call.answer("Спор не активен.", show_alert=True)
+        await call.answer(_t(user, "Dispute is not active.", "???? ?? ????????."), show_alert=True)
         return
 
     client_agree, editor_agree = await set_dispute_agree(order_id, user.role)
-    await call.answer("Отмечено.", show_alert=True)
+    await call.answer(_t(user, "Marked.", "?????????."), show_alert=True)
 
     if client_agree and editor_agree:
         await close_dispute(order_id)
         client = await get_user_by_id(int(order["client_id"]))
         editor = await get_user_by_id(int(order["editor_id"]))
         moderators = await list_moderators()
-        msg = f"Спор по заказу #{order_id} закрыт по согласию сторон.",
         if client:
-            await call.bot.send_message(client.telegram_id, msg)
+            await call.bot.send_message(
+                client.telegram_id,
+                _t(client, f"Dispute for order #{order_id} closed by agreement.", f"???? ?? ?????????? #{order_id} ??????? ?? ?????? ??????."),
+            )
         if editor:
-            await call.bot.send_message(editor.telegram_id, msg)
+            await call.bot.send_message(
+                editor.telegram_id,
+                _t(editor, f"Dispute for order #{order_id} closed by agreement.", f"???? ?? ?????????? #{order_id} ??????? ?? ?????? ??????."),
+            )
         for m in moderators:
-            await call.bot.send_message(m.telegram_id, msg)
+            await call.bot.send_message(
+                m.telegram_id,
+                _t(m, f"Dispute for order #{order_id} closed by agreement.", f"???? ?? ?????????? #{order_id} ??????? ?? ?????? ??????."),
+            )
 
 @router.callback_query(F.data.startswith("deal:dispute:close:"))
 async def dispute_close(call: CallbackQuery):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "????????? /start"), show_alert=True)
         return
     if user.role != "moderator":
-        await call.answer("Нет доступа.", show_alert=True)
+        await call.answer(_t(user, "No access.", "????? ???????."), show_alert=True)
         return
 
     try:
         order_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer("Некорректный номер.", show_alert=True)
+        await call.answer(_t(user, "Invalid number.", "??????????? ?????."), show_alert=True)
         return
 
     ok = await close_dispute(order_id)
     if not ok:
-        await call.answer("Спор не активен.", show_alert=True)
+        await call.answer(_t(user, "Dispute is not active.", "???? ?? ????????."), show_alert=True)
         return
 
     order = await get_order_by_id(order_id)
     client = await get_user_by_id(int(order["client_id"])) if order else None
     editor = await get_user_by_id(int(order["editor_id"])) if order else None
     moderators = await list_moderators()
-    msg = f"Спор по заказу #{order_id} закрыт модератором.",
     if client:
-        await call.bot.send_message(client.telegram_id, msg)
+        await call.bot.send_message(
+            client.telegram_id,
+            _t(client, f"Dispute for order #{order_id} closed by moderator.", f"???? ?? ?????????? #{order_id} ??????? ???????????."),
+        )
     if editor:
-        await call.bot.send_message(editor.telegram_id, msg)
+        await call.bot.send_message(
+            editor.telegram_id,
+            _t(editor, f"Dispute for order #{order_id} closed by moderator.", f"???? ?? ?????????? #{order_id} ??????? ???????????."),
+        )
     for m in moderators:
-        await call.bot.send_message(m.telegram_id, msg)
+        await call.bot.send_message(
+            m.telegram_id,
+            _t(m, f"Dispute for order #{order_id} closed by moderator.", f"???? ?? ?????????? #{order_id} ??????? ???????????."),
+        )
 
 @router.callback_query(F.data.startswith("deal:dispute:"))
 async def dispute_open(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(_tl(None, "Type /start", "????????? /start"), show_alert=True)
         return
 
     parts = call.data.split(":")
@@ -1451,27 +1519,27 @@ async def dispute_open(call: CallbackQuery, state: FSMContext):
     try:
         order_id = int(parts[-1])
     except ValueError:
-        await call.answer("Некорректный номер.", show_alert=True)
+        await call.answer(_t(user, "Invalid number.", "??????????? ?????."), show_alert=True)
         return
 
     order = await get_order_by_id(order_id)
     if not order or not order.get("editor_id"):
-        await call.answer("Сделка не найдена.", show_alert=True)
+        await call.answer(_t(user, "Deal not found.", "????? ?? ????????."), show_alert=True)
         return
 
     if user.id not in (order.get("client_id"), order.get("editor_id")):
-        await call.answer("Нет доступа.", show_alert=True)
+        await call.answer(_t(user, "No access.", "????? ???????."), show_alert=True)
         return
 
     if order.get("status") == "dispute":
-        await call.answer("Спор уже активен.", show_alert=True)
+        await call.answer(_t(user, "Dispute is already active.", "???? ??? ????????."), show_alert=True)
         return
 
     await state.clear()
     await state.set_state(DisputeOpenReason.waiting_text)
     await state.update_data(order_id=order_id)
     await call.answer()
-    await call.message.answer("Опишите причину спора одним сообщением.")
+    await call.message.answer(_t(user, "Describe the dispute reason in one message.", "??????? ??????? ????? ????? ?????????????."))
 
 @router.message(DisputeOpenReason.waiting_text)
 async def dispute_open_reason(message: Message, state: FSMContext):
@@ -1487,50 +1555,66 @@ async def dispute_open_reason(message: Message, state: FSMContext):
 
     reason = (message.text or "").strip()
     if not reason:
-        await message.answer("Причина не должна быть пустой.")
+        await message.answer(_t(user, "Reason cannot be empty.", "Причина не повинна бути порожньою."))
         return
 
     order = await get_order_by_id(order_id)
     if not order or not order.get("editor_id"):
         await state.clear()
-        await message.answer("Сделка не найдена.")
+        await message.answer(_t(user, "Deal not found.", "Угоду не знайдено."))
         return
 
     if user.id not in (order.get("client_id"), order.get("editor_id")):
         await state.clear()
-        await message.answer("Нет доступа.")
+        await message.answer(_t(user, "No access.", "Немає доступу."))
         return
 
     ok = await open_dispute(order_id, user.id)
     if not ok:
         await state.clear()
-        await message.answer("Не удалось открыть спор.")
+        await message.answer(_t(user, "Failed to open dispute.", "Не вдалося відкрити спір."))
         return
 
     await state.clear()
     await state.set_state(DisputeChat.chatting)
     await state.update_data(order_id=order_id)
 
-    warning = (
-        "Внимание! Сделка заморожена до конца спора.\n"
-        "Окончательное решение выносит модератор.\n"
-        "Спор может закрыть модератор или если обе стороны согласятся.",
+    warning_en = (
+        "Attention! The deal is frozen until the dispute is resolved.\n"
+        "Final decision is made by a moderator.\n"
+        "The dispute can be closed by a moderator or if both parties agree."
     )
+    warning_ua = (
+        "\u0423\u0432\u0430\u0433\u0430! \u0423\u0433\u043e\u0434\u0443 \u0437\u0430\u043c\u043e\u0440\u043e\u0436\u0435\u043d\u043e \u0434\u043e \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043d\u044f \u0441\u043f\u043e\u0440\u0443.\n"
+        "\u041e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u0435 \u0440\u0456\u0448\u0435\u043d\u043d\u044f \u043f\u0440\u0438\u0439\u043c\u0430\u0454 \u043c\u043e\u0434\u0435\u0440\u0430\u0442\u043e\u0440.\n"
+        "\u0421\u043f\u0456\u0440 \u043c\u043e\u0436\u0435 \u0437\u0430\u043a\u0440\u0438\u0442\u0438 \u043c\u043e\u0434\u0435\u0440\u0430\u0442\u043e\u0440 \u0430\u0431\u043e \u044f\u043a\u0449\u043e \u043e\u0431\u0438\u0434\u0432\u0456 \u0441\u0442\u043e\u0440\u043e\u043d\u0438 \u043f\u043e\u0433\u043e\u0434\u044f\u0442\u044c\u0441\u044f."
+    )
+    warning = _t(user, warning_en, warning_ua)
 
     client = await get_user_by_id(int(order["client_id"]))
     editor = await get_user_by_id(int(order["editor_id"]))
     moderators = await list_moderators()
 
-    mod_msg = f"Спор по заказу #{order_id} открыт. Причина: {reason}",
-
     if client and client.telegram_id != message.from_user.id:
-        await message.bot.send_message(client.telegram_id, warning, reply_markup=kb_dispute_join(order_id))
+        await message.bot.send_message(
+            client.telegram_id,
+            _t(client, warning_en, warning_ua),
+            reply_markup=kb_dispute_join(order_id, lang=client.language),
+        )
     if editor and editor.telegram_id != message.from_user.id:
-        await message.bot.send_message(editor.telegram_id, warning, reply_markup=kb_dispute_join(order_id))
+        await message.bot.send_message(
+            editor.telegram_id,
+            _t(editor, warning_en, warning_ua),
+            reply_markup=kb_dispute_join(order_id, lang=editor.language),
+        )
     for m in moderators:
-        await message.bot.send_message(m.telegram_id, mod_msg, reply_markup=kb_dispute_join(order_id))
+        await message.bot.send_message(
+            m.telegram_id,
+            _t(m, f"Dispute for order #{order_id} opened. Reason: {reason}", f"Спір по замовленню #{order_id} відкрито. Причина: {reason}"),
+            reply_markup=kb_dispute_join(order_id, lang=m.language),
+        )
 
-    await message.answer(warning, reply_markup=kb_dispute_controls(order_id, is_moderator=False))
+    await message.answer(warning, reply_markup=kb_dispute_controls(order_id, is_moderator=False, lang=user.language))
 
 @router.message(DisputeChat.chatting)
 async def dispute_chat_message(message: Message, state: FSMContext):
@@ -1546,18 +1630,16 @@ async def dispute_chat_message(message: Message, state: FSMContext):
     order = await get_order_by_id(order_id)
     if not order or order.get("status") != "dispute":
         await state.clear()
-        await message.answer("Спор не активен.")
+        await message.answer(_t(user, "Dispute is not active.", "Спір не активний."))
         return
 
     if user.role != "moderator" and user.id not in (order.get("client_id"), order.get("editor_id")):
-        await message.answer("Нет доступа.")
+        await message.answer(_t(user, "No access.", "Немає доступу."))
         return
 
     text = (message.text or "").strip()
     if not text:
         return
-
-    prefix = f"СПОР #{order_id} от {_user_label(user)}\n"
 
     moderators = await list_moderators()
     recipients = []
@@ -1571,17 +1653,19 @@ async def dispute_chat_message(message: Message, state: FSMContext):
             continue
         u = await get_user_by_id(uid)
         if u:
+            prefix = _t(u, f"DISPUTE #{order_id} from {_user_label(user)}\n", f"СПІР #{order_id} від {_user_label(user)}\n")
             await message.bot.send_message(
                 u.telegram_id,
                 prefix + text,
-                reply_markup=kb_dispute_controls(order_id, is_moderator=False),
+                reply_markup=kb_dispute_controls(order_id, is_moderator=False, lang=u.language),
             )
 
     for m in moderators:
         if m.id == user.id:
             continue
+        prefix = _t(m, f"DISPUTE #{order_id} from {_user_label(user)}\n", f"СПІР #{order_id} від {_user_label(user)}\n")
         await message.bot.send_message(
             m.telegram_id,
             prefix + text,
-            reply_markup=kb_dispute_controls(order_id, is_moderator=True),
+            reply_markup=kb_dispute_controls(order_id, is_moderator=True, lang=m.language),
         )

@@ -4,15 +4,16 @@ from app.moderation_utils import is_moderator_telegram_id
 
 async def get_menu_markup_for_user(user):
     is_moderator = is_moderator_telegram_id(user.telegram_id)
+    lang = getattr(user, "language", None)
     if user.role == "editor":
         p = await get_editor_profile(user.id)
         is_verified = bool(p and p.get("verification_status") == "verified")
-        base_menu = kb_editor_menu(is_verified)
+        base_menu = kb_editor_menu(is_verified, lang)
     elif user.role == "moderator":
-        base_menu = kb_moderation_menu()
+        base_menu = kb_moderation_menu(lang)
     else:
-        base_menu = kb_main_menu(user.role)
+        base_menu = kb_main_menu(user.role, lang)
 
     if is_moderator and user.role != "moderator":
-        return kb_with_moderation_button(base_menu)
+        return kb_with_moderation_button(base_menu, lang)
     return base_menu

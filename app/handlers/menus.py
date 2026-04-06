@@ -12,6 +12,7 @@ from app.keyboards import (
 )
 from app.profile_repo import get_editor_profile
 from app.order_repo import list_open_orders, list_orders_for_editor
+from app import texts
 
 router = Router()
 
@@ -54,12 +55,12 @@ async def send_clean_from_call(call: CallbackQuery, state: FSMContext, text: str
 
 @router.callback_query(
     F.data.startswith(("client:", "editor:", "common:")) &
-    ~F.data.in_(["client:profile", "editor:profile", "client:create_order", "client:my_orders"])
+    ~F.data.in_(["client:profile", "editor:profile", "client:create_order", "client:my_orders", "common:settings"])
 )
 async def cb_menu(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(texts.tr(None, "Type /start", "Натисніть /start"), show_alert=True)
         return
 
     # ✅ "В меню"
@@ -67,7 +68,7 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
         await send_clean_from_call(
             call,
             state,
-            "Меню:",
+            texts.tr(user.language, "Menu:", "Меню:"),
             reply_markup=await get_menu_markup_for_user(user),
         )
         await call.answer()
@@ -78,14 +79,14 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
             await send_clean_from_call(
                 call,
                 state,
-                "💳 Баланс: скоро будет.",
+                texts.tr(user.language, "💳 Balance: coming soon.", "💳 Баланс: скоро буде."),
                 reply_markup=await get_menu_markup_for_user(user),
             )
     elif call.data == "common:vip":
         await send_clean_from_call(
             call,
             state,
-            "💎 VIP: скоро будет.",
+            texts.tr(user.language, "💎 VIP: coming soon.", "💎 VIP: скоро буде."),
             reply_markup=await get_menu_markup_for_user(user),
         )
     elif call.data == "common:support":
@@ -94,35 +95,35 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
             await send_clean_from_call(
                 call,
                 state,
-                "🆘 Поддержка: напишите админу.",
-                reply_markup=kb_support(admin_username),
+                texts.tr(user.language, "🆘 Support: message the admin.", "🆘 Підтримка: напишіть адміну."),
+                reply_markup=kb_support(admin_username, user.language),
             )
         else:
             await send_clean_from_call(
                 call,
                 state,
-                "🆘 Поддержка: админ не настроен.",
+                texts.tr(user.language, "🆘 Support: admin is not configured.", "🆘 Підтримка: адмін не налаштований."),
                 reply_markup=await get_menu_markup_for_user(user),
             )
     elif call.data == "editor:find_orders":
         p = await get_editor_profile(user.id)
         if not p or p.get("verification_status") != "verified":
-            await call.answer("⛔ Сначала пройдите верификацию.", show_alert=True)
+            await call.answer(texts.tr(user.language, "⛔ Please verify first.", "⛔ Спочатку пройдіть верифікацію."), show_alert=True)
             return
         orders = await list_open_orders(limit=10)
         if not orders:
             await send_clean_from_call(
                 call,
                 state,
-                "🔎 Доступных заказов пока нет.",
+                texts.tr(user.language, "🔎 No available orders yet.", "🔎 Доступних замовлень поки немає."),
                 reply_markup=await get_menu_markup_for_user(user),
             )
         else:
             await send_clean_from_call(
                 call,
                 state,
-                "🔎 Доступные заказы:",
-                reply_markup=kb_editor_orders_list(orders),
+                texts.tr(user.language, "🔎 Available orders:", "🔎 Доступні замовлення:"),
+                reply_markup=kb_editor_orders_list(orders, user.language),
             )
     elif call.data == "editor:my_proposals":
         orders = await list_orders_for_editor(user.id, limit=10)
@@ -130,15 +131,15 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
             await send_clean_from_call(
                 call,
                 state,
-                "📬 Откликов пока нет.",
+                texts.tr(user.language, "📬 No proposals yet.", "📬 Відгуків поки немає."),
                 reply_markup=await get_menu_markup_for_user(user),
             )
         else:
             await send_clean_from_call(
                 call,
                 state,
-                "📬 Мои отклики:",
-                reply_markup=kb_editor_my_orders_list(orders),
+                texts.tr(user.language, "📬 My proposals:", "📬 Мої відгуки:"),
+                reply_markup=kb_editor_my_orders_list(orders, user.language),
             )
     elif call.data == "editor:my_deals":
         orders = await list_orders_for_editor(user.id, limit=10)
@@ -146,21 +147,21 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
             await send_clean_from_call(
                 call,
                 state,
-                "💼 Активных сделок пока нет.",
+                texts.tr(user.language, "💼 No active deals yet.", "💼 Активних угод поки немає."),
                 reply_markup=await get_menu_markup_for_user(user),
             )
         else:
             await send_clean_from_call(
                 call,
                 state,
-                "💼 Мои сделки:",
-                reply_markup=kb_editor_my_orders_list(orders),
+                texts.tr(user.language, "💼 My deals:", "💼 Мої угоди:"),
+                reply_markup=kb_editor_my_orders_list(orders, user.language),
             )
     else:
         await send_clean_from_call(
             call,
             state,
-            f"⏳ Раздел в разработке: {call.data}",
+            texts.tr(user.language, f"⏳ In development: {call.data}", f"⏳ Розділ у розробці: {call.data}"),
             reply_markup=await get_menu_markup_for_user(user),
         )
 

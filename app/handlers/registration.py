@@ -11,6 +11,7 @@ from app.keyboards import (
     kb_edit_client_menu,
 )
 from app.menu_utils import get_menu_markup_for_user
+from app import texts
 from app.states import RegClient, RegEditor, EditEditor, EditClient
 from app.profile_repo import (
     upsert_client_profile,
@@ -68,7 +69,9 @@ async def send_clean_from_call(call: CallbackQuery, state: FSMContext, text: str
 
 @router.callback_query(F.data.startswith("role:"))
 async def cb_role(call: CallbackQuery, state: FSMContext):
-    role = call.data.split(":", 1)[1]
+    parts = call.data.split(":")
+    role = parts[1]
+    lang = texts.normalize_lang(parts[2] if len(parts) > 2 else None)
     tg = call.from_user
     display_name = (tg.full_name or "").strip() or tg.username or "User"
 
@@ -77,7 +80,7 @@ async def cb_role(call: CallbackQuery, state: FSMContext):
         username=tg.username,
         display_name=display_name,
         role=role,
-        language="ru",
+        language=lang,
     )
 
     await call.answer()
@@ -88,8 +91,8 @@ async def cb_role(call: CallbackQuery, state: FSMContext):
         await send_clean_from_call(
             call,
             state,
-            "Введите имя (как показывать заказчикам):",
-            reply_markup=kb_nav_portfolio_none(cancel="reg:cancel")
+            texts.tr(lang, "Enter your name (shown to clients):", "Введіть ім'я (як показувати замовникам):"),
+            reply_markup=kb_nav_portfolio_none(cancel="reg:cancel", lang=lang)
         )
     else:
         await state.clear()
@@ -97,8 +100,8 @@ async def cb_role(call: CallbackQuery, state: FSMContext):
         await send_clean_from_call(
             call,
             state,
-            "Введите имя (как показывать исполнителям):",
-            reply_markup=kb_nav(cancel="reg:cancel")
+            texts.tr(lang, "Enter your name (shown to editors):", "Введіть ім'я (як показувати виконавцям):"),
+            reply_markup=kb_nav(cancel="reg:cancel", lang=lang)
         )
 
 # ---------- initial client registration ----------
@@ -114,45 +117,54 @@ async def save_client_name(message: Message, state: FSMContext):
     await safe_delete_message(message)
     await state.clear()
     await clear_last_bot_message(state, message.bot, message.chat.id)
-    await message.answer("✅ Профиль заказчика обновлён!", reply_markup=await get_menu_markup_for_user(user))
+    await message.answer(
+        texts.tr(user.language, "✅ Client profile updated!", "✅ Профіль замовника оновлено!"),
+        reply_markup=await get_menu_markup_for_user(user),
+    )
 
 # ---------- initial editor registration ----------
 
 @router.message(RegEditor.waiting_name)
 async def editor_step_name(message: Message, state: FSMContext):
     await state.update_data(name=(message.text or "").strip())
+    user = await get_user_by_telegram_id(message.from_user.id)
+    lang = user.language if user else None
     await safe_delete_message(message)
     await state.set_state(RegEditor.waiting_skills)
     await send_clean(
         message,
         state,
-        "Специализации через запятую (Shorts, YouTube, Reels):",
-        reply_markup=kb_nav(cancel="reg:cancel")
+        texts.tr(lang, "Skills separated by comma (Shorts, YouTube, Reels):", "Спеціалізації через кому (Shorts, YouTube, Reels):"),
+        reply_markup=kb_nav(cancel="reg:cancel", lang=lang)
     )
 
 @router.message(RegEditor.waiting_skills)
 async def editor_step_skills(message: Message, state: FSMContext):
     await state.update_data(skills=(message.text or "").strip())
+    user = await get_user_by_telegram_id(message.from_user.id)
+    lang = user.language if user else None
     await safe_delete_message(message)
     await state.set_state(RegEditor.waiting_price)
     await send_clean(
         message,
         state,
-        "Минимальная цена (число). Например: 20",
-        reply_markup=kb_nav(cancel="reg:cancel")
+        texts.tr(lang, "Minimum price (number). Example: 20", "Мінімальна ціна (число). Наприклад: 20"),
+        reply_markup=kb_nav(cancel="reg:cancel", lang=lang)
     )
 
 @router.message(RegEditor.waiting_price)
 async def editor_step_price(message: Message, state: FSMContext):
     raw = (message.text or "").strip()
+    user = await get_user_by_telegram_id(message.from_user.id)
+    lang = user.language if user else None
     await safe_delete_message(message)
 
     if not raw.isdigit():
         await send_clean(
             message,
             state,
-            "Цена должна быть числом. Например: 20",
-            reply_markup=kb_nav(cancel="reg:cancel")
+            texts.tr(lang, "Price must be a number. Example: 20", "Ціна має бути числом. Наприклад: 20"),
+            reply_markup=kb_nav(cancel="reg:cancel", lang=lang)
         )
         return
 
@@ -161,15 +173,15 @@ async def editor_step_price(message: Message, state: FSMContext):
     await send_clean(
         message,
         state,
-        "Ссылка на портфолио:",
-        reply_markup=kb_nav(cancel="reg:cancel")
+        texts.tr(lang, "Portfolio link:", "Посилання на портфоліо:"),
+        reply_markup=kb_nav(cancel="reg:cancel", lang=lang)
     )
 
 @router.callback_query(F.data == "reg:portfolio:none")
 async def editor_step_portfolio_none(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer("Нажмите /start", show_alert=True)
+        await call.answer(texts.tr(None, "Type /start", "Натисніть /start"), show_alert=True)
         return
 
     data = await state.get_data()
@@ -185,7 +197,7 @@ async def editor_step_portfolio_none(call: CallbackQuery, state: FSMContext):
     await clear_last_bot_message(state, call.bot, call.message.chat.id)
 
     await call.message.answer(
-        "✅ Профиль монтажёра обновлён!",
+        texts.tr(user.language, "✅ Editor profile updated!", "✅ Профіль монтажера оновлено!"),
         reply_markup=await get_menu_markup_for_user(user)
     )
     await call.answer()
@@ -213,7 +225,7 @@ async def editor_step_portfolio(message: Message, state: FSMContext):
     is_verified = bool(p and p.get("verification_status") == "verified")
 
     await message.answer(
-        "✅ Профиль монтажёра обновлён!",
+        texts.tr(user.language, "✅ Editor profile updated!", "✅ Профіль монтажера оновлено!"),
         reply_markup=await get_menu_markup_for_user(user)
     )
 
@@ -222,23 +234,27 @@ async def editor_step_portfolio(message: Message, state: FSMContext):
 @router.callback_query(F.data == "edit:editor_menu")
 async def edit_editor_menu(call: CallbackQuery, state: FSMContext):
     await state.clear()
+    user = await get_user_by_telegram_id(call.from_user.id)
+    lang = user.language if user else None
     await call.answer()
     await send_clean_from_call(
         call,
         state,
-        "Что хотите изменить?",
-        reply_markup=kb_edit_editor_menu()
+        texts.tr(lang, "What would you like to change?", "Що хочете змінити?"),
+        reply_markup=kb_edit_editor_menu(lang)
     )
 
 @router.callback_query(F.data == "edit:client_menu")
 async def edit_client_menu(call: CallbackQuery, state: FSMContext):
     await state.clear()
+    user = await get_user_by_telegram_id(call.from_user.id)
+    lang = user.language if user else None
     await call.answer()
     await send_clean_from_call(
         call,
         state,
-        "Что хотите изменить?",
-        reply_markup=kb_edit_client_menu()
+        texts.tr(lang, "What would you like to change?", "Що хочете змінити?"),
+        reply_markup=kb_edit_client_menu(lang)
     )
 
 # ---------- edit client fields ----------
@@ -246,12 +262,14 @@ async def edit_client_menu(call: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "edit:client:name")
 async def edit_client_name_start(call: CallbackQuery, state: FSMContext):
     await state.set_state(EditClient.waiting_name)
+    user = await get_user_by_telegram_id(call.from_user.id)
+    lang = user.language if user else None
     await call.answer()
     await send_clean_from_call(
         call,
         state,
-        "Введите новое имя:",
-        reply_markup=kb_nav_menu_help(back="edit:client_menu")
+        texts.tr(lang, "Enter new name:", "Введіть нове ім'я:"),
+        reply_markup=kb_nav_menu_help(back="edit:client_menu", lang=lang)
     )
 
 @router.message(EditClient.waiting_name)
@@ -268,8 +286,8 @@ async def edit_client_name_save(message: Message, state: FSMContext):
     await send_clean(
         message,
         state,
-        "✅ Имя обновлено.\n\nЧто хотите изменить дальше?",
-        reply_markup=kb_edit_client_menu()
+        texts.tr(user.language, "✅ Name updated.\n\nWhat would you like to change next?", "✅ Ім'я оновлено.\n\nЩо хочете змінити далі?"),
+        reply_markup=kb_edit_client_menu(user.language)
     )
 
 # ---------- edit editor fields ----------
@@ -277,12 +295,14 @@ async def edit_client_name_save(message: Message, state: FSMContext):
 @router.callback_query(F.data == "edit:editor:name")
 async def edit_editor_name_start(call: CallbackQuery, state: FSMContext):
     await state.set_state(EditEditor.waiting_name)
+    user = await get_user_by_telegram_id(call.from_user.id)
+    lang = user.language if user else None
     await call.answer()
     await send_clean_from_call(
         call,
         state,
-        "Введите новое имя:",
-        reply_markup=kb_nav_menu_help(back="edit:editor_menu")
+        texts.tr(lang, "Enter new name:", "Введіть нове ім'я:"),
+        reply_markup=kb_nav_menu_help(back="edit:editor_menu", lang=lang)
     )
 
 @router.message(EditEditor.waiting_name)
@@ -305,19 +325,21 @@ async def edit_editor_name_save(message: Message, state: FSMContext):
     await send_clean(
         message,
         state,
-        "✅ Имя обновлено.\n\nЧто хотите изменить дальше?",
-        reply_markup=kb_edit_editor_menu()
+        texts.tr(user.language, "✅ Name updated.\n\nWhat would you like to change next?", "✅ Ім'я оновлено.\n\nЩо хочете змінити далі?"),
+        reply_markup=kb_edit_editor_menu(user.language)
     )
 
 @router.callback_query(F.data == "edit:editor:skills")
 async def edit_editor_skills_start(call: CallbackQuery, state: FSMContext):
     await state.set_state(EditEditor.waiting_skills)
+    user = await get_user_by_telegram_id(call.from_user.id)
+    lang = user.language if user else None
     await call.answer()
     await send_clean_from_call(
         call,
         state,
-        "Введите ваши специализации (Shorts, Reels):",
-        reply_markup=kb_nav_menu_help(back="edit:editor_menu")
+        texts.tr(lang, "Enter your skills (Shorts, Reels):", "Введіть ваші спеціалізації (Shorts, Reels):"),
+        reply_markup=kb_nav_menu_help(back="edit:editor_menu", lang=lang)
     )
 
 @router.message(EditEditor.waiting_skills)
@@ -340,19 +362,21 @@ async def edit_editor_skills_save(message: Message, state: FSMContext):
     await send_clean(
         message,
         state,
-        "✅ Специализации обновлены.\n\nЧто хотите изменить дальше?",
-        reply_markup=kb_edit_editor_menu()
+        texts.tr(user.language, "✅ Skills updated.\n\nWhat would you like to change next?", "✅ Спеціалізації оновлено.\n\nЩо хочете змінити далі?"),
+        reply_markup=kb_edit_editor_menu(user.language)
     )
 
 @router.callback_query(F.data == "edit:editor:price")
 async def edit_editor_price_start(call: CallbackQuery, state: FSMContext):
     await state.set_state(EditEditor.waiting_price)
+    user = await get_user_by_telegram_id(call.from_user.id)
+    lang = user.language if user else None
     await call.answer()
     await send_clean_from_call(
         call,
         state,
-        "Введите новую цену (число в $):",
-        reply_markup=kb_nav_menu_help(back="edit:editor_menu")
+        texts.tr(lang, "Enter new price (number in $):", "Введіть нову ціну (число в $):"),
+        reply_markup=kb_nav_menu_help(back="edit:editor_menu", lang=lang)
     )
 
 @router.message(EditEditor.waiting_price)
@@ -369,8 +393,8 @@ async def edit_editor_price_save(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            "Цена должна быть числом. Например: 20",
-            reply_markup=kb_nav_menu_help(back="edit:editor_menu")
+            texts.tr(user.language, "Price must be a number. Example: 20", "Ціна має бути числом. Наприклад: 20"),
+            reply_markup=kb_nav_menu_help(back="edit:editor_menu", lang=user.language)
         )
         return
 
@@ -386,19 +410,21 @@ async def edit_editor_price_save(message: Message, state: FSMContext):
     await send_clean(
         message,
         state,
-        "✅ Цена обновлена.\n\nЧто хотите изменить дальше?",
-        reply_markup=kb_edit_editor_menu()
+        texts.tr(user.language, "✅ Price updated.\n\nWhat would you like to change next?", "✅ Ціну оновлено.\n\nЩо хочете змінити далі?"),
+        reply_markup=kb_edit_editor_menu(user.language)
     )
 
 @router.callback_query(F.data == "edit:editor:portfolio")
 async def edit_editor_portfolio_start(call: CallbackQuery, state: FSMContext):
     await state.set_state(EditEditor.waiting_portfolio)
+    user = await get_user_by_telegram_id(call.from_user.id)
+    lang = user.language if user else None
     await call.answer()
     await send_clean_from_call(
         call,
         state,
-        "Введите новую ссылку на портфолио:",
-        reply_markup=kb_nav_menu_help(back="edit:editor_menu")
+        texts.tr(lang, "Enter new portfolio link:", "Введіть нове посилання на портфоліо:"),
+        reply_markup=kb_nav_menu_help(back="edit:editor_menu", lang=lang)
     )
 
 @router.message(EditEditor.waiting_portfolio)
@@ -421,8 +447,8 @@ async def edit_editor_portfolio_save(message: Message, state: FSMContext):
     await send_clean(
         message,
         state,
-        "✅ Портфолио обновлено.\n\nЧто хотите изменить дальше?",
-        reply_markup=kb_edit_editor_menu()
+        texts.tr(user.language, "✅ Portfolio updated.\n\nWhat would you like to change next?", "✅ Портфоліо оновлено.\n\nЩо хочете змінити далі?"),
+        reply_markup=kb_edit_editor_menu(user.language)
     )
 
 # ---------- cancel ----------
@@ -439,8 +465,14 @@ async def reg_cancel(call: CallbackQuery, state: FSMContext):
         if user.role == "editor":
             p = await get_editor_profile(user.id)
             is_verified = bool(p and p.get("verification_status") == "verified")
-            await call.message.answer("Ок, отменено.", reply_markup=await get_menu_markup_for_user(user))
+            await call.message.answer(
+                texts.tr(user.language, "OK, canceled.", "Добре, скасовано."),
+                reply_markup=await get_menu_markup_for_user(user),
+            )
         else:
-            await call.message.answer("Ок, отменено.", reply_markup=await get_menu_markup_for_user(user))
+            await call.message.answer(
+                texts.tr(user.language, "OK, canceled.", "Добре, скасовано."),
+                reply_markup=await get_menu_markup_for_user(user),
+            )
     else:
-        await call.message.answer("Ок, отменено. Нажмите /start")
+        await call.message.answer(texts.tr(None, "OK, canceled. Type /start", "Добре, скасовано. Натисніть /start"))
