@@ -6,6 +6,7 @@ from app.models import get_user_by_telegram_id, get_user_by_id
 from app.profile_repo import set_editor_verification
 from app.menu_utils import get_menu_markup_for_user
 from app.moderation_utils import is_moderator_telegram_id
+from app.order_repo import list_active_deals, get_order_by_id, set_payment_status, create_deal_message, add_to_balance
 from app.moderation_repo import (
     list_pending_verifications,
     list_held_messages,
@@ -13,6 +14,7 @@ from app.moderation_repo import (
     get_deal_by_id,
     get_held_message_by_id,
     update_held_message_status,
+    create_held_message,
     count_stats,
     create_user_sanction,
     log_moderation_action,
@@ -26,6 +28,9 @@ from app.keyboards import (
     kb_nav_menu_help,
     kb_verify_chat_reply,
     kb_verify_chat_controls,
+    kb_deals_list,
+    kb_mod_deal_menu,
+    kb_mod_deal_payment_menu,
 )
 from app.states import ModerationSearch, ModerationUserLookup, ModerationMessage, VerifyChat
 from app import texts
@@ -150,6 +155,22 @@ async def _show_disputes(call: CallbackQuery, offset: int, lang: str | None = No
         call,
         text,
         reply_markup=kb_mod_dispute_controls(int(d["id"]), offset, lang),
+    )
+
+async def _show_active_deals(call: CallbackQuery, lang: str | None = None):
+    items = await list_active_deals(limit=20)
+    if not items:
+        await _safe_edit_or_send(
+            call,
+            texts.tr(lang, "💼 Active deals\n\nNo active deals found.", "💼 Активні угоди\n\nАктивних угод не знайдено."),
+            reply_markup=kb_nav_menu_help(back="common:menu", lang=lang),
+        )
+        return
+
+    await _safe_edit_or_send(
+        call,
+        texts.tr(lang, "💼 Active deals:", "💼 Активні угоди:"),
+        reply_markup=kb_deals_list(items, lang),
     )
 
 # ---------- menu entries ----------
@@ -470,6 +491,214 @@ async def mod_disputes_page(call: CallbackQuery):
     await _show_disputes(call, offset, user.language)
     await call.answer()
 
+@router.callback_query(F.data == "mod:active_deals")
+async def mod_active_deals(call: CallbackQuery):
+    user = await _ensure_moderator(call)
+    if not user:
+        return
+    await _show_active_deals(call, user.language)
+    await call.answer()
+
+@router.callback_query(F.data.startswith("mod:deal:menu:"))
+async def mod_deal_menu(call: CallbackQuery):
+    user = await _ensure_moderator(call)
+    if not user:
+        return
+    try:
+        order_id = int(call.data.split(":")[-1])
+    except ValueError:
+        await call.answer(_t(user, "Invalid order id.", "Некоректний id угоди."), show_alert=True)
+        return
+
+    order = await get_order_by_id(order_id)
+    if not order:
+        await call.answer(_t(user, "Deal not found.", "Угоду не знайдено."), show_alert=True)
+        return
+
+    is_dispute = order.get("status") == "dispute"
+    await _safe_edit_or_send(
+        call,
+        _t(user, "Deal menu:", "Меню угоди:"),
+        reply_markup=kb_mod_deal_menu(order_id, is_dispute, order.get("payment_status"), user.language),
+    )
+    await call.answer()
+
+@router.callback_query(F.data.startswith("mod:deal:payment:"))
+async def mod_deal_payment(call: CallbackQuery):
+    user = await _ensure_moderator(call)
+    if not user:
+        return
+    try:
+        order_id = int(call.data.split(":")[-1])
+    except ValueError:
+        await call.answer(_t(user, "Invalid order id.", "Некоректний id угоди."), show_alert=True)
+        return
+
+    await _safe_edit_or_send(
+        call,
+        _t(user, "Deal payment actions:", "Дії з оплатою угоди:"),
+        reply_markup=kb_mod_deal_payment_menu(order_id, user.language),
+    )
+    await call.answer()
+
+@router.callback_query(F.data.startswith("mod:deal:chat:client:"))
+async def mod_deal_chat_client(call: CallbackQuery, state: FSMContext):
+    user = await _ensure_moderator(call)
+    if not user:
+        return
+    try:
+        order_id = int(call.data.split(":")[-1])
+    except ValueError:
+        await call.answer(_t(user, "Invalid order id.", "Некоректний id угоди."), show_alert=True)
+        return
+
+    order = await get_order_by_id(order_id)
+    if not order or not order.get("client_id"):
+        await call.answer(_t(user, "Client not found.", "Замовника не знайдено."), show_alert=True)
+        return
+
+    await state.clear()
+    await state.set_state(ModerationMessage.waiting_text)
+    await state.update_data(
+        target_user_ids=[int(order["client_id"])],
+        object_type="deal",
+        object_id=order_id,
+        action_type="mod_chat_client",
+    )
+    await _safe_edit_or_send(
+        call,
+        _t(user, "✉️ Send a single message to the client:", "✉️ Напишіть повідомлення замовнику одним повідомленням:"),
+        reply_markup=kb_nav_menu_help(back=f"mod:deal:menu:{order_id}", lang=user.language),
+    )
+    await call.answer()
+
+@router.callback_query(F.data.startswith("mod:deal:chat:editor:"))
+async def mod_deal_chat_editor(call: CallbackQuery, state: FSMContext):
+    user = await _ensure_moderator(call)
+    if not user:
+        return
+    try:
+        order_id = int(call.data.split(":")[-1])
+    except ValueError:
+        await call.answer(_t(user, "Invalid order id.", "Некоректний id угоди."), show_alert=True)
+        return
+
+    order = await get_order_by_id(order_id)
+    if not order or not order.get("editor_id"):
+        await call.answer(_t(user, "Editor not found.", "Монтажера не знайдено."), show_alert=True)
+        return
+
+    await state.clear()
+    await state.set_state(ModerationMessage.waiting_text)
+    await state.update_data(
+        target_user_ids=[int(order["editor_id"])],
+        object_type="deal",
+        object_id=order_id,
+        action_type="mod_chat_editor",
+    )
+    await _safe_edit_or_send(
+        call,
+        _t(user, "✉️ Send a single message to the editor:", "✉️ Напишіть повідомлення монтажеру одним повідомленням:"),
+        reply_markup=kb_nav_menu_help(back=f"mod:deal:menu:{order_id}", lang=user.language),
+    )
+    await call.answer()
+
+@router.callback_query(F.data.startswith("mod:deal:refund:client:"))
+async def mod_deal_refund_client(call: CallbackQuery, state: FSMContext):
+    user = await _ensure_moderator(call)
+    if not user:
+        return
+    try:
+        order_id = int(call.data.split(":")[-1])
+    except ValueError:
+        await call.answer(_t(user, "Invalid order id.", "Некоректний id угоди."), show_alert=True)
+        return
+
+    order = await get_order_by_id(order_id)
+    if not order or not order.get("client_id"):
+        await call.answer(_t(user, "Client not found.", "Замовника не знайдено."), show_alert=True)
+        return
+
+    await state.clear()
+    await state.set_state(ModerationMessage.waiting_text)
+    await state.update_data(
+        target_user_ids=[int(order["client_id"])],
+        object_type="deal",
+        object_id=order_id,
+        action_type="refund_client",
+        action_payload={"payment_status": "refunded_client"},
+    )
+    await _safe_edit_or_send(
+        call,
+        _t(user, "✉️ Enter a short reason for refunding the client:", "✉️ Введіть коротку причину повернення коштів замовнику:"),
+        reply_markup=kb_nav_menu_help(back=f"mod:deal:payment:{order_id}", lang=user.language),
+    )
+    await call.answer()
+
+@router.callback_query(F.data.startswith("mod:deal:refund:editor:"))
+async def mod_deal_refund_editor(call: CallbackQuery, state: FSMContext):
+    user = await _ensure_moderator(call)
+    if not user:
+        return
+    try:
+        order_id = int(call.data.split(":")[-1])
+    except ValueError:
+        await call.answer(_t(user, "Invalid order id.", "Некоректний id угоди."), show_alert=True)
+        return
+
+    order = await get_order_by_id(order_id)
+    if not order or not order.get("editor_id"):
+        await call.answer(_t(user, "Editor not found.", "Монтажера не знайдено."), show_alert=True)
+        return
+
+    await state.clear()
+    await state.set_state(ModerationMessage.waiting_text)
+    await state.update_data(
+        target_user_ids=[int(order["editor_id"])],
+        object_type="deal",
+        object_id=order_id,
+        action_type="refund_editor",
+        action_payload={"payment_status": "refunded_editor"},
+    )
+    await _safe_edit_or_send(
+        call,
+        _t(user, "✉️ Enter a short reason for refunding the editor:", "✉️ Введіть коротку причину повернення коштів монтажеру:"),
+        reply_markup=kb_nav_menu_help(back=f"mod:deal:payment:{order_id}", lang=user.language),
+    )
+    await call.answer()
+
+@router.callback_query(F.data.startswith("mod:deal:split:"))
+async def mod_deal_split(call: CallbackQuery, state: FSMContext):
+    user = await _ensure_moderator(call)
+    if not user:
+        return
+    try:
+        order_id = int(call.data.split(":")[-1])
+    except ValueError:
+        await call.answer(_t(user, "Invalid order id.", "Некоректний id угоди."), show_alert=True)
+        return
+
+    order = await get_order_by_id(order_id)
+    if not order or not (order.get("client_id") and order.get("editor_id")):
+        await call.answer(_t(user, "Deal parties not found.", "Учасники угоди не знайдені."), show_alert=True)
+        return
+
+    await state.clear()
+    await state.set_state(ModerationMessage.waiting_text)
+    await state.update_data(
+        target_user_ids=[int(order["client_id"]), int(order["editor_id"])],
+        object_type="deal",
+        object_id=order_id,
+        action_type="split_payment",
+        action_payload={"payment_status": "split_50_50"},
+    )
+    await _safe_edit_or_send(
+        call,
+        _t(user, "✉️ Enter a short explanation for the 50/50 split:", "✉️ Введіть коротку причину розподілу 50/50:"),
+        reply_markup=kb_nav_menu_help(back=f"mod:deal:payment:{order_id}", lang=user.language),
+    )
+    await call.answer()
+
 @router.callback_query(F.data.startswith("mod:disputes:pay:"))
 async def mod_disputes_pay(call: CallbackQuery):
     user = await _ensure_moderator(call)
@@ -786,14 +1015,47 @@ async def mod_send_message(message: Message, state: FSMContext):
     object_type = data.get("object_type") or "user"
     object_id = data.get("object_id")
     action_type = data.get("action_type") or "message"
+    action_payload = data.get("action_payload") or {}
 
     for target_id in target_ids:
         target_user = await get_user_by_id(target_id)
         if target_user:
             await message.bot.send_message(
                 target_user.telegram_id,
-                _t(moderator, f"Message from moderator:\n{text}", f"Повідомлення від модератора:\n{text}"),
+                _t(moderator, f"Moderator note:\n{text}", f"Нотатка модератора:\n{text}"),
             )
+
+    if object_type == "deal" and object_id:
+        await create_deal_message(int(object_id), moderator.id, "moderator", text)
+    if object_type == "deal" and action_payload.get("payment_status") and object_id:
+        await set_payment_status(int(object_id), action_payload["payment_status"])
+
+        # Handle balance adjustments for refunds and splits
+        order = await get_order_by_id(int(object_id))
+        if order:
+            payment_status = action_payload["payment_status"]
+            if payment_status == "refunded_client":
+                # Refund to client - no balance change needed as money goes back to payment system
+                pass
+            elif payment_status == "refunded_editor":
+                # Refund to editor - deduct from our balance if they were already paid
+                if order.get("payment_status") == "paid":
+                    editor_id = order.get("editor_id")
+                    amount = order.get("agreed_price_minor", 0)
+                    if editor_id and amount > 0:
+                        await add_to_balance(editor_id, -amount, "refunded", int(object_id), f"Refunded by moderator: {text}")
+            elif payment_status == "split_50_50":
+                # Split payment - credit both parties with half
+                client_id = order.get("client_id")
+                editor_id = order.get("editor_id")
+                total_amount = order.get("agreed_price_minor", 0)
+                half_amount = total_amount // 2
+
+                if client_id and editor_id and total_amount > 0:
+                    # Credit client half
+                    await add_to_balance(client_id, half_amount, "split_refund", int(object_id), f"50/50 split by moderator: {text}")
+                    # Credit editor half
+                    await add_to_balance(editor_id, half_amount, "split_payment", int(object_id), f"50/50 split by moderator: {text}")
 
     await log_moderation_action(
         moderator_user_id=moderator.id,
@@ -801,7 +1063,7 @@ async def mod_send_message(message: Message, state: FSMContext):
         target_user_id=target_ids[0] if target_ids else None,
         object_type=object_type,
         object_id=int(object_id) if object_id else None,
-        payload={"text": text, "targets": target_ids},
+        payload={"text": text, "targets": target_ids, **action_payload},
     )
 
     await state.clear()

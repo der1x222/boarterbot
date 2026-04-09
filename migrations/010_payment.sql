@@ -1,0 +1,5 @@
+ALTER TABLE orders
+  ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT 'pending',
+  ADD COLUMN IF NOT EXISTS stripe_session_id TEXT,
+  ADD COLUMN IF NOT EXISTS payment_link TEXT,
+  ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;

@@ -4,7 +4,9 @@ class RegEditor(StatesGroup):
     waiting_name = State()
     waiting_skills = State()
     waiting_price = State()
+    waiting_skill_level = State()
     waiting_portfolio = State()
+    waiting_experience = State()
 
 class RegClient(StatesGroup):
     waiting_name = State()
@@ -26,6 +28,7 @@ class CreateOrder(StatesGroup):
     waiting_description = State()
     waiting_budget = State()
     waiting_revision_price = State()
+    waiting_deadline_mode = State()
     waiting_deadline = State()
 
 class DealChange(StatesGroup):
@@ -44,6 +47,17 @@ class EditorProposal(StatesGroup):
 
 class ChatRequest(StatesGroup):
     waiting_text = State()
+
+class RevisionRequest(StatesGroup):
+    waiting_description = State()
+    waiting_price = State()
+
+class RevisionCounter(StatesGroup):
+    waiting_price = State()
+
+class BalanceWithdraw(StatesGroup):
+    waiting_amount = State()
+    waiting_description = State()
 
 class DealChat(StatesGroup):
     chatting = State()

@@ -1,21 +1,31 @@
 from typing import Optional
 from app.db import pool
 
-async def upsert_editor_profile(user_id: int, name: str, skills: str, price_from_minor: int, portfolio_url: str) -> None:
+async def upsert_editor_profile(
+    user_id: int, 
+    name: str, 
+    skills: str, 
+    price_from_minor: int, 
+    portfolio_url: str,
+    skill_level: str = "",
+    experience_description: str = "",
+) -> None:
     p = pool()
     async with p.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO editor_profiles (user_id, name, skills, price_from_minor, portfolio_url)
-            VALUES ($1,$2,$3,$4,$5)
+            INSERT INTO editor_profiles (user_id, name, skills, price_from_minor, portfolio_url, skill_level, experience_description)
+            VALUES ($1,$2,$3,$4,$5,$6,$7)
             ON CONFLICT (user_id)
             DO UPDATE SET name=EXCLUDED.name,
                           skills=EXCLUDED.skills,
                           price_from_minor=EXCLUDED.price_from_minor,
                           portfolio_url=EXCLUDED.portfolio_url,
+                          skill_level=EXCLUDED.skill_level,
+                          experience_description=EXCLUDED.experience_description,
                           updated_at=NOW()
             """,
-            user_id, name, skills, price_from_minor, portfolio_url
+            user_id, name, skills, price_from_minor, portfolio_url, skill_level, experience_description
         )
 
 async def get_editor_profile(user_id: int) -> Optional[dict]:
@@ -28,6 +38,8 @@ async def get_editor_profile(user_id: int) -> Optional[dict]:
                    skills,
                    price_from_minor,
                    portfolio_url,
+                   skill_level,
+                   experience_description,
                    verification_status,
                    verification_note,
                    test_submission

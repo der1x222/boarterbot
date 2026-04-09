@@ -9,6 +9,7 @@ from app.keyboards import (
     kb_nav_menu_help,
     kb_edit_editor_menu,
     kb_edit_client_menu,
+    kb_skill_level,
 )
 from app.menu_utils import get_menu_markup_for_user
 from app import texts
@@ -92,7 +93,7 @@ async def cb_role(call: CallbackQuery, state: FSMContext):
             call,
             state,
             texts.tr(lang, "Enter your name (shown to clients):", "Введіть ім'я (як показувати замовникам):"),
-            reply_markup=kb_nav_portfolio_none(cancel="reg:cancel", lang=lang)
+            reply_markup=kb_nav(cancel="reg:cancel", lang=lang)
         )
     else:
         await state.clear()
@@ -169,12 +170,35 @@ async def editor_step_price(message: Message, state: FSMContext):
         return
 
     await state.update_data(price_from_minor=int(raw) * 100)
-    await state.set_state(RegEditor.waiting_portfolio)
+    await state.set_state(RegEditor.waiting_skill_level)
+    
+    user = await get_user_by_telegram_id(message.from_user.id)
+    lang = user.language if user else None
+    
     await send_clean(
         message,
         state,
-        texts.tr(lang, "Portfolio link:", "Посилання на портфоліо:"),
-        reply_markup=kb_nav(cancel="reg:cancel", lang=lang)
+        texts.tr(lang, "What is your skill level?", "Який ваш рівень навичок?"),
+        reply_markup=kb_skill_level(lang)
+    )
+
+@router.callback_query(F.data.startswith("reg:skill_level:"))
+async def editor_step_skill_level(call: CallbackQuery, state: FSMContext):
+    user = await get_user_by_telegram_id(call.from_user.id)
+    if not user:
+        await call.answer(texts.tr(None, "Type /start", "Натисніть /start"), show_alert=True)
+        return
+    
+    skill_level = call.data.split(":")[-1]
+    await state.update_data(skill_level=skill_level)
+    await call.answer()
+    
+    await state.set_state(RegEditor.waiting_portfolio)
+    await send_clean_from_call(
+        call,
+        state,
+        texts.tr(user.language, "Portfolio link (or skip):", "Посилання на портфоліо (або пропустити):"),
+        reply_markup=kb_nav_portfolio_none(cancel="reg:cancel", lang=user.language)
     )
 
 @router.callback_query(F.data == "reg:portfolio:none")
@@ -184,26 +208,34 @@ async def editor_step_portfolio_none(call: CallbackQuery, state: FSMContext):
         await call.answer(texts.tr(None, "Type /start", "Натисніть /start"), show_alert=True)
         return
 
-    data = await state.get_data()
-    await upsert_editor_profile(
-        user_id=user.id,
-        name=data.get("name", ""),
-        skills=data.get("skills", ""),
-        price_from_minor=int(data.get("price_from_minor") or 0),
-        portfolio_url="",
-    )
-
-    await state.clear()
-    await clear_last_bot_message(state, call.bot, call.message.chat.id)
-
-    await call.message.answer(
-        texts.tr(user.language, "✅ Editor profile updated!", "✅ Профіль монтажера оновлено!"),
-        reply_markup=await get_menu_markup_for_user(user)
-    )
+    await state.set_state(RegEditor.waiting_experience)
     await call.answer()
+    await send_clean_from_call(
+        call,
+        state,
+        texts.tr(user.language, "Tell us about your experience (who you worked with, projects, etc.):", "Розповідьте про свій досвід (з ким працювали, проекти тощо):"),
+        reply_markup=kb_nav(cancel="reg:cancel", lang=user.language)
+    )
 
 @router.message(RegEditor.waiting_portfolio)
 async def editor_step_portfolio(message: Message, state: FSMContext):
+    user = await get_user_by_telegram_id(message.from_user.id)
+    if not user:
+        return
+
+    await state.update_data(portfolio_url=(message.text or "").strip())
+    await safe_delete_message(message)
+    
+    await state.set_state(RegEditor.waiting_experience)
+    await send_clean(
+        message,
+        state,
+        texts.tr(user.language, "Tell us about your experience (who you worked with, projects, etc.):", "Розповідьте про свій досвід (з ким працювали, проекти тощо):"),
+        reply_markup=kb_nav(cancel="reg:cancel", lang=user.language)
+    )
+
+@router.message(RegEditor.waiting_experience)
+async def editor_step_experience(message: Message, state: FSMContext):
     user = await get_user_by_telegram_id(message.from_user.id)
     if not user:
         return
@@ -214,15 +246,14 @@ async def editor_step_portfolio(message: Message, state: FSMContext):
         name=data.get("name", ""),
         skills=data.get("skills", ""),
         price_from_minor=int(data.get("price_from_minor") or 0),
-        portfolio_url=(message.text or "").strip(),
+        portfolio_url=data.get("portfolio_url", ""),
+        skill_level=data.get("skill_level", ""),
+        experience_description=(message.text or "").strip(),
     )
 
     await safe_delete_message(message)
     await state.clear()
     await clear_last_bot_message(state, message.bot, message.chat.id)
-
-    p = await get_editor_profile(user.id)
-    is_verified = bool(p and p.get("verification_status") == "verified")
 
     await message.answer(
         texts.tr(user.language, "✅ Editor profile updated!", "✅ Профіль монтажера оновлено!"),

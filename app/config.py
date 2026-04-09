@@ -11,6 +11,10 @@ class Config:
     redis_dsn: str
     moderator_ids: set[int]
     default_language: str
+    liqpay_public_key: str
+    liqpay_private_key: str
+    liqpay_sandbox: bool
+    app_url: str
 
 def load_config() -> Config:
     token = os.getenv("BOT_TOKEN", "").strip()
@@ -20,6 +24,10 @@ def load_config() -> Config:
     db_dsn = os.getenv("DB_DSN", "").strip()
     redis_dsn = os.getenv("REDIS_DSN", "").strip()
     default_language = os.getenv("DEFAULT_LANGUAGE", "en").strip()
+    liqpay_public_key = os.getenv("LIQPAY_PUBLIC_KEY", "").strip()
+    liqpay_private_key = os.getenv("LIQPAY_PRIVATE_KEY", "").strip()
+    liqpay_sandbox = os.getenv("LIQPAY_SANDBOX", "0").strip() in {"1", "true", "True", "yes", "on"}
+    app_url = os.getenv("APP_URL", "https://example.com").strip()
 
     raw_mods = os.getenv("MODERATOR_IDS", "").strip()
     moderator_ids: set[int] = set()
@@ -35,4 +43,8 @@ def load_config() -> Config:
         redis_dsn=redis_dsn,
         moderator_ids=moderator_ids,
         default_language=default_language,
+        liqpay_public_key=liqpay_public_key,
+        liqpay_private_key=liqpay_private_key,
+        liqpay_sandbox=liqpay_sandbox,
+        app_url=app_url,
     )

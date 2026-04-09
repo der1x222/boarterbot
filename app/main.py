@@ -26,6 +26,11 @@ async def main():
     await run_migration_file("migrations/007_orders_revision_price.sql")
     await run_migration_file("migrations/008_orders_dispute.sql")
     await run_migration_file("migrations/009_moderation.sql")
+    await run_migration_file("migrations/010_payment.sql")
+    await run_migration_file("migrations/011_editor_profile_extended.sql")
+    await run_migration_file("migrations/012_orders_agreed_price.sql")
+    await run_migration_file("migrations/013_deal_messages.sql")
+    await run_migration_file("migrations/014_balance_and_revisions.sql")
 
     bot = Bot(token=cfg.bot_token, parse_mode=ParseMode.HTML)
     await bot.delete_webhook(drop_pending_updates=True)

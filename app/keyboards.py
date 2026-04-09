@@ -31,6 +31,15 @@ def kb_nav_portfolio_none(cancel: str = "reg:cancel", lang: str | None = None) -
     b.adjust(2)
     return b.as_markup()
 
+def kb_skill_level(lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text=_tr(lang, "Beginner", "Початківець"), callback_data="reg:skill_level:beginner")
+    b.button(text=_tr(lang, "Intermediate", "Середній"), callback_data="reg:skill_level:intermediate")
+    b.button(text=_tr(lang, "Professional", "Професійний"), callback_data="reg:skill_level:professional")
+    b.button(text=_tr(lang, "Expert", "Експерт"), callback_data="reg:skill_level:expert")
+    b.adjust(2)
+    return b.as_markup()
+
 
 def kb_nav_menu_help(
     back: str | None = None,
@@ -46,6 +55,17 @@ def kb_nav_menu_help(
     b.adjust(3)
     return b.as_markup()
 
+
+def kb_about_menu(lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    lng = texts.normalize_lang(lang)
+    b.button(text=_tr(lng, "🇺🇦 Ukrainian", "🇺🇦 Українська"), callback_data="common:about:ua")
+    b.button(text=_tr(lng, "🇬🇧 English", "🇬🇧 English"), callback_data="common:about:en")
+    b.button(text=_tr(lng, "Menu", "Меню"), callback_data="common:menu")
+    b.adjust(1, 1, 1)
+    return b.as_markup()
+
+
 def kb_main_menu(role: str, lang: str | None = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     lng = texts.normalize_lang(lang)
@@ -54,23 +74,23 @@ def kb_main_menu(role: str, lang: str | None = None) -> InlineKeyboardMarkup:
         b.button(text=_tr(lng, "➕ Create order", "➕ Створити замовлення"), callback_data="client:create_order")
         b.button(text=_tr(lng, "⬅️ Orders list", "⬅️ До списку"), callback_data="client:my_orders")
         b.button(text=_tr(lng, "💼 My deals", "💼 Мої угоди"), callback_data="client:my_deals")
-        b.button(text="VIP", callback_data="common:vip")
         b.button(text=_tr(lng, "👤 Profile", "👤 Профіль"), callback_data="client:profile")
+        b.button(text=_tr(lng, "ℹ️ About us", "ℹ️ Про нас"), callback_data="common:about")
         b.button(text=_lang_label("btn_settings", lng), callback_data="common:settings")
         b.button(text=_tr(lng, "💳 Balance", "💳 Баланс"), callback_data="common:balance")
         b.button(text=_tr(lng, "🆘 Support", "🆘 Підтримка"), callback_data="common:support")
-        b.adjust(2, 2, 2, 2)
+        b.adjust(2, 2, 2, 1)
 
     elif role == "editor":
         b.button(text=_tr(lng, "👤 Profile", "👤 Профіль"), callback_data="editor:profile")
         b.button(text=_tr(lng, "✅ Verify", "✅ Верифікація"), callback_data="verify:start")
         b.button(text=_tr(lng, "📬 My proposals", "📬 Мої відгуки"), callback_data="editor:my_proposals")
         b.button(text=_tr(lng, "💼 My deals", "💼 Мої угоди"), callback_data="editor:my_deals")
-        b.button(text="VIP", callback_data="common:vip")
+        b.button(text=_tr(lng, "ℹ️ About us", "ℹ️ Про нас"), callback_data="common:about")
         b.button(text=_lang_label("btn_settings", lng), callback_data="common:settings")
         b.button(text=_tr(lng, "💳 Balance", "💳 Баланс"), callback_data="common:balance")
         b.button(text=_tr(lng, "🆘 Support", "🆘 Підтримка"), callback_data="common:support")
-        b.adjust(2, 2, 2, 2)
+        b.adjust(2, 2, 2, 1)
 
     else:
         return kb_moderation_menu(lng)
@@ -82,6 +102,7 @@ def kb_moderation_menu(lang: str | None = None) -> InlineKeyboardMarkup:
     lng = texts.normalize_lang(lang)
     b.button(text=_tr(lng, "🆕 New verifications", "🆕 Нові верифікації"), callback_data="mod:verifications")
     b.button(text=_tr(lng, "⚠️ Disputes", "⚠️ Спори"), callback_data="mod:disputes")
+    b.button(text=_tr(lng, "💼 Active deals", "💼 Активні угоди"), callback_data="mod:active_deals")
     b.button(text=_tr(lng, "💬 Messages on review", "💬 Повідомлення на перевірці"), callback_data="mod:held_messages")
     b.button(text=_tr(lng, "🔎 Search", "🔎 Пошук"), callback_data="mod:search")
     b.button(text=_tr(lng, "📊 Stats", "📊 Статистика"), callback_data="mod:stats")
@@ -108,11 +129,11 @@ def kb_editor_menu(is_verified: bool, lang: str | None = None) -> InlineKeyboard
         b.button(text=_tr(lng, "✅ Verify", "✅ Верифікація"), callback_data="verify:start")
     b.button(text=_tr(lng, "📬 My proposals", "📬 Мої відгуки"), callback_data="editor:my_proposals")
     b.button(text=_tr(lng, "💼 My deals", "💼 Мої угоди"), callback_data="editor:my_deals")
-    b.button(text="VIP", callback_data="common:vip")
+    b.button(text=_tr(lng, "ℹ️ About us", "ℹ️ Про нас"), callback_data="common:about")
     b.button(text=_lang_label("btn_settings", lng), callback_data="common:settings")
     b.button(text=_tr(lng, "💳 Balance", "💳 Баланс"), callback_data="common:balance")
     b.button(text=_tr(lng, "🆘 Support", "🆘 Підтримка"), callback_data="common:support")
-    b.adjust(2, 2, 2, 2)
+    b.adjust(2, 2, 2, 1)
     return b.as_markup()
 
 def kb_profile(role: str, verification_status: str | None = None, lang: str | None = None) -> InlineKeyboardMarkup:
@@ -303,12 +324,20 @@ def kb_editor_order_detail(order_id: int) -> InlineKeyboardMarkup:
     b.adjust(2, 1, 2)
     return b.as_markup()
 
-def kb_deal_menu(order_id: int, lang: str | None = None) -> InlineKeyboardMarkup:
+def kb_deal_menu(order_id: int, lang: str | None = None, user_role: str = None, order_status: str = None, final_video_sent: bool = False, revision_requested: bool = False) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.button(text=_tr(lang, "Chat", "Чат"), callback_data=f"deal:chat:{order_id}")
+
+    if user_role == "editor" and order_status == "accepted":
+        b.button(text=_tr(lang, "Complete order", "Завершити замовлення"), callback_data=f"order:complete:menu:{order_id}")
+    elif user_role == "client" and order_status == "accepted" and final_video_sent:
+        if revision_requested:
+            b.button(text=_tr(lang, "Request revisions", "Запросити правки"), callback_data=f"order:revision:request:{order_id}")
+        b.button(text=_tr(lang, "Confirm completion", "Підтвердити завершення"), callback_data=f"order:complete:confirm:{order_id}")
+
     b.button(text=_tr(lang, "Change", "Змінити"), callback_data=f"deal:change:{order_id}")
     b.button(text=_tr(lang, "Support", "Підтримка"), callback_data="common:support")
-    b.adjust(2, 1)
+    b.adjust(2, 2)
     return b.as_markup()
 
 def kb_deal_chat_menu(order_id: int, lang: str | None = None) -> InlineKeyboardMarkup:
@@ -335,6 +364,32 @@ def kb_deal_chat_link_controls(order_id: int, lang: str | None = None) -> Inline
     b.adjust(1, 1)
     return b.as_markup()
 
+def kb_mod_deal_menu(order_id: int, is_dispute: bool, payment_status: str | None = None, lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text=_tr(lang, "Read chat", "Читати чат"), callback_data=f"deal:chat:start:{order_id}")
+    b.button(text=_tr(lang, "Chat with client", "Чат з замовником"), callback_data=f"mod:deal:chat:client:{order_id}")
+    b.button(text=_tr(lang, "Chat with editor", "Чат з монтажером"), callback_data=f"mod:deal:chat:editor:{order_id}")
+    b.button(text=_tr(lang, "Payment", "Оплата"), callback_data=f"mod:deal:payment:{order_id}")
+    if is_dispute:
+        b.button(text=_tr(lang, "Dispute", "Спір"), callback_data=f"deal:dispute:{order_id}")
+    b.button(text=_tr(lang, "Back", "Назад"), callback_data="mod:active_deals")
+    b.button(text=_tr(lang, "Menu", "Меню"), callback_data="common:menu")
+    b.adjust(2, 2, 2)
+    return b.as_markup()
+
+def kb_mod_deal_payment_menu(order_id: int, lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text=_tr(lang, "Chat with client", "Чат з замовником"), callback_data=f"mod:deal:chat:client:{order_id}")
+    b.button(text=_tr(lang, "Chat with editor", "Чат з монтажером"), callback_data=f"mod:deal:chat:editor:{order_id}")
+    b.button(text=_tr(lang, "Join chat", "Увійти в чат"), callback_data=f"deal:chat:start:{order_id}")
+    b.button(text=_tr(lang, "Refund to client", "Повернути оплату замовнику"), callback_data=f"mod:deal:refund:client:{order_id}")
+    b.button(text=_tr(lang, "Refund to editor", "Повернути оплату монтажеру"), callback_data=f"mod:deal:refund:editor:{order_id}")
+    b.button(text=_tr(lang, "50/50 split", "50 на 50"), callback_data=f"mod:deal:split:{order_id}")
+    b.button(text=_tr(lang, "Back", "Назад"), callback_data=f"mod:deal:menu:{order_id}")
+    b.button(text=_tr(lang, "Menu", "Меню"), callback_data="common:menu")
+    b.adjust(2, 2, 2, 2)
+    return b.as_markup()
+
 def kb_dispute_join(order_id: int, lang: str | None = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.button(text=_tr(lang, "Join dispute", "Увійти в спір"), callback_data=f"deal:dispute:join:{order_id}")
@@ -352,13 +407,139 @@ def kb_dispute_controls(order_id: int, is_moderator: bool = False, lang: str | N
     b.adjust(1, 1, 1)
     return b.as_markup()
 
-def kb_proposal_actions(order_id: int, editor_id: int, lang: str | None = None) -> InlineKeyboardMarkup:
+def kb_proposal_actions(
+    order_id: int,
+    editor_id: int,
+    proposal_price_minor: int | None = None,
+    lang: str | None = None,
+) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
+    price_part = f":{int(proposal_price_minor)}" if proposal_price_minor is not None else ""
     b.button(text=_tr(lang, "Start chat", "Почати чат"), callback_data=f"proposal:chat:{order_id}:{editor_id}")
-    b.button(text=_tr(lang, "Accept", "Прийняти"), callback_data=f"proposal:accept:{order_id}:{editor_id}")
+    b.button(text=_tr(lang, "Accept", "Прийняти"), callback_data=f"proposal:accept:{order_id}:{editor_id}{price_part}")
     b.button(text=_tr(lang, "Reject", "Відхилити"), callback_data=f"proposal:reject:{order_id}:{editor_id}")
     b.adjust(1, 1, 1)
     return b.as_markup()
+
+# ---------- Balance menu ----------
+
+def kb_balance_menu(balance_minor: int, total_earned_minor: int, verified: bool, lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    balance_text = f"{balance_minor / 100:.2f} USD"
+    earned_text = f"{total_earned_minor / 100:.2f} USD"
+
+    b.button(text=_tr(lang, f"💰 Balance: {balance_text}", f"💰 Баланс: {balance_text}"), callback_data="balance:info")
+    b.button(text=_tr(lang, f"📈 Total earned: {earned_text}", f"📈 Загалом зароблено: {earned_text}"), callback_data="balance:info")
+
+    if verified:
+        b.button(text=_tr(lang, "💸 Withdraw funds", "💸 Вивести кошти"), callback_data="balance:withdraw")
+    else:
+        b.button(text=_tr(lang, "🔒 Withdrawal (needs verification)", "🔒 Вивід (потрібна верифікація)"), callback_data="balance:verify_request")
+
+    b.button(text=_tr(lang, "📋 Transaction history", "📋 Історія транзакцій"), callback_data="balance:history")
+    b.button(text=_tr(lang, "⬅️ Back", "⬅️ Назад"), callback_data="balance:back")
+    b.adjust(1, 1, 1, 1)
+    return b.as_markup()
+
+def kb_balance_history(transactions: list[dict], lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+
+    for tx in transactions[:5]:  # Show last 5 transactions
+        amount = tx["amount_minor"] / 100
+        tx_type = tx["transaction_type"]
+        date = tx["created_at"].strftime("%d.%m.%Y")
+        desc = tx.get("description", "")
+
+        if tx_type == "earned":
+            icon = "💰"
+            text = f"{icon} +{amount:.2f} USD - {desc}"
+        elif tx_type == "withdrawn":
+            icon = "💸"
+            text = f"{icon} -{abs(amount):.2f} USD - {desc}"
+        else:
+            icon = "🔄"
+            text = f"{icon} {amount:.2f} USD - {desc}"
+
+        b.button(text=text, callback_data=f"balance:tx_detail:{tx['id']}")
+
+    b.button(text=_tr(lang, "⬅️ Back to balance", "⬅️ Назад до балансу"), callback_data="balance:back")
+    b.adjust(1)
+    return b.as_markup()
+
+# ---------- Revision request menu ----------
+
+def kb_revision_request_menu(order_id: int, lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text=_tr(lang, "📝 Request revision", "📝 Запросити правки"), callback_data=f"order:revision:request:{order_id}")
+    b.button(text=_tr(lang, "⬅️ Back", "⬅️ Назад"), callback_data=f"order:menu:{order_id}")
+    b.adjust(1, 1)
+    return b.as_markup()
+
+def kb_revision_response_menu(order_id: int, revision_description: str, proposed_price_minor: int, lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    price_text = f"{proposed_price_minor / 100:.2f} USD"
+
+    b.button(text=_tr(lang, f"✅ Accept ({price_text})", f"✅ Прийняти ({price_text})"), callback_data=f"revision:accept:{order_id}")
+    b.button(text=_tr(lang, "💰 Propose different price", "💰 Запропонувати іншу ціну"), callback_data=f"revision:counter:{order_id}")
+    b.button(text=_tr(lang, "❌ Reject revision", "❌ Відхилити правки"), callback_data=f"revision:reject:{order_id}")
+    b.button(text=_tr(lang, "💬 Discuss with client", "💬 Обговорити з замовником"), callback_data=f"revision:chat:{order_id}")
+    b.adjust(1, 1, 1, 1)
+    return b.as_markup()
+
+# ---------- Order completion menu ----------
+
+def kb_order_completion_menu(order_id: int, lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text=_tr(lang, "📤 Send final video", "📤 Надіслати фінальне відео"), callback_data=f"order:complete:send_video:{order_id}")
+    b.button(text=_tr(lang, "⬅️ Back", "⬅️ Назад"), callback_data=f"order:menu:{order_id}")
+    b.adjust(1, 1)
+    return b.as_markup()
+
+def kb_client_completion_menu(order_id: int, has_revisions: bool, lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+
+    if has_revisions:
+        b.button(text=_tr(lang, "📝 Request revisions", "📝 Запросити правки"), callback_data=f"order:revision:request:{order_id}")
+        b.button(text=_tr(lang, "✅ Confirm completion", "✅ Підтвердити завершення"), callback_data=f"order:complete:confirm:{order_id}")
+    else:
+        b.button(text=_tr(lang, "✅ Confirm completion", "✅ Підтвердити завершення"), callback_data=f"order:complete:confirm:{order_id}")
+
+    b.button(text=_tr(lang, "💬 Chat with editor", "💬 Чат з монтажером"), callback_data=f"order:chat:{order_id}")
+    b.button(text=_tr(lang, "⬅️ Back", "⬅️ Назад"), callback_data=f"order:menu:{order_id}")
+    b.adjust(1, 1, 1)
+    return b.as_markup()
+
+def kb_deals_list(orders: list[dict], lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    for o in orders:
+        title = (o.get("title") or "-").strip()
+        if len(title) > 24:
+            title = title[:21] + "..."
+        status = (o.get("status") or "").strip()
+        label = f"#{o['id']} {title}"
+        if status:
+            label = f"{label} ({status})"
+        b.button(text=label, callback_data=f"deal:menu:{o['id']}")
+    b.button(text=_tr(lang, "Menu", "Меню"), callback_data="common:menu")
+    b.button(text=_tr(lang, "Support", "Підтримка"), callback_data="common:support")
+    sizes = [1] * len(orders)
+    sizes.append(2)
+    b.adjust(*sizes)
+    return b.as_markup()
+
+def kb_deadline_quick(back: str, cancel: str, lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text=_tr(lang, "24 hours", "24 години"), callback_data="deadline:hours:24")
+    b.button(text=_tr(lang, "3 days", "3 дні"), callback_data="deadline:days:3")
+    b.button(text=_tr(lang, "7 days", "7 днів"), callback_data="deadline:days:7")
+    b.button(text=_tr(lang, "14 days", "14 днів"), callback_data="deadline:days:14")
+    b.button(text=_tr(lang, "Custom date", "Свій термін"), callback_data="deadline:custom")
+    b.button(text=_tr(lang, "Back", "Назад"), callback_data=back)
+    b.button(text=_tr(lang, "Cancel", "Скасувати"), callback_data=cancel)
+    b.adjust(2, 2, 1, 2)
+    return b.as_markup()
+
+
 
 def kb_verify_chat_reply(moderator_user_id: int) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()

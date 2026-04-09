@@ -63,6 +63,29 @@ async def update_held_message_status(message_id: int, status: str) -> bool:
         )
     return bool(row)
 
+async def create_held_message(
+    deal_id: int,
+    sender_user_id: int,
+    original_text: str,
+    normalized_text: str,
+    flag_reason: str,
+) -> int:
+    p = pool()
+    async with p.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO held_messages (deal_id, sender_user_id, original_text, normalized_text, flag_reason)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
+            """,
+            deal_id,
+            sender_user_id,
+            original_text,
+            normalized_text,
+            flag_reason,
+        )
+    return int(row["id"])
+
 async def list_dispute_deals(offset: int = 0, limit: int = 1) -> list[dict]:
     p = pool()
     async with p.acquire() as conn:
