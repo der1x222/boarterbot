@@ -166,13 +166,13 @@ def kb_verify_admin(editor_user_id: int, lang: str | None = None) -> InlineKeybo
     b.adjust(2, 1)
     return b.as_markup()
 
-def kb_mod_verification_controls(user_id: int, offset: int) -> InlineKeyboardMarkup:
+def kb_mod_verification_controls(user_id: int, offset: int, lang: str | None = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
-    b.button(text="✅ Approve", callback_data=f"mod:verifications:approve:{user_id}:{offset}")
-    b.button(text="❌ Reject", callback_data=f"mod:verifications:reject:{user_id}:{offset}")
-    b.button(text="\U0001F4AC \u0427\u0430\u0442", callback_data=f"mod:verifications:chat:{user_id}")
-    b.button(text="⬅️ Назад", callback_data="common:menu")
-    b.button(text="▶️ Следующий", callback_data=f"mod:verifications:page:{offset + 1}")
+    b.button(text=_tr(lang, "✅ Approve", "✅ Підтвердити"), callback_data=f"mod:verifications:approve:{user_id}:{offset}")
+    b.button(text=_tr(lang, "❌ Reject", "❌ Відхилити"), callback_data=f"mod:verifications:reject:{user_id}:{offset}")
+    b.button(text=_tr(lang, "💬 Chat", "💬 Чат"), callback_data=f"mod:verifications:chat:{user_id}")
+    b.button(text=_tr(lang, "⬅️ Back", "⬅️ Назад"), callback_data="common:menu")
+    b.button(text=_tr(lang, "▶️ Next", "▶️ Наступний"), callback_data=f"mod:verifications:page:{offset + 1}")
     b.adjust(2, 1, 2)
     return b.as_markup()
 
