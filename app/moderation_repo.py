@@ -18,6 +18,23 @@ async def list_pending_verifications(offset: int = 0, limit: int = 1) -> list[di
         )
     return [dict(r) for r in rows]
 
+async def list_verified_editors(offset: int = 0, limit: int = 10) -> list[dict]:
+    p = pool()
+    async with p.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT user_id, name, skills, price_from_minor, portfolio_url, verification_status
+            FROM editor_profiles
+            WHERE verification_status = 'verified'
+            ORDER BY updated_at DESC
+            OFFSET $1
+            LIMIT $2
+            """,
+            offset,
+            limit,
+        )
+    return [dict(r) for r in rows]
+
 async def list_held_messages(offset: int = 0, limit: int = 1) -> list[dict]:
     p = pool()
     async with p.acquire() as conn:

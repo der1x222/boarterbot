@@ -81,14 +81,7 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
         return
 
     # Заглушки / проверки:
-    if call.data == "common:balance":
-            await send_clean_from_call(
-                call,
-                state,
-                texts.tr(user.language, "💳 Balance: coming soon.", "💳 Баланс: скоро буде."),
-                reply_markup=await get_menu_markup_for_user(user),
-            )
-    elif call.data == "common:vip":
+    if call.data == "common:vip":
         await send_clean_from_call(
             call,
             state,
@@ -315,6 +308,37 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
             state,
             texts.tr(user.language, "Main menu:", "Головне меню:"),
             reply_markup=await get_menu_markup_for_user(user),
+        )
+
+    elif call.data == "balance:info":
+        balance_data = await get_user_balance(user.id)
+        transactions = await list_balance_transactions(user.id, limit=5)
+        await send_clean_from_call(
+            call,
+            state,
+            texts.tr(user.language, "💰 Your balance:", "💰 Ваш баланс:"),
+            reply_markup=kb_balance_menu(
+                balance_data["virtual_balance_minor"],
+                balance_data["total_earned_minor"],
+                balance_data["verified_for_withdrawal"],
+                user.language
+            ),
+        )
+
+    elif call.data.startswith("balance:tx_detail:"):
+        try:
+            tx_id = int(call.data.split(":")[-1])
+        except ValueError:
+            await call.answer(texts.tr(user.language, "Invalid transaction ID.", "Некоректний ID транзакції."), show_alert=True)
+            return
+
+        # For simplicity, just show the transaction history again
+        transactions = await list_balance_transactions(user.id, limit=20)
+        await send_clean_from_call(
+            call,
+            state,
+            texts.tr(user.language, "Transaction history:", "Історія транзакцій:"),
+            reply_markup=kb_balance_history(transactions, user.language),
         )
 
     else:

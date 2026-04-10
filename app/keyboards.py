@@ -101,6 +101,7 @@ def kb_moderation_menu(lang: str | None = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     lng = texts.normalize_lang(lang)
     b.button(text=_tr(lng, "🆕 New verifications", "🆕 Нові верифікації"), callback_data="mod:verifications")
+    b.button(text=_tr(lng, "✅ Verified users", "✅ Верифіковані користувачі"), callback_data="mod:verified_users")
     b.button(text=_tr(lng, "⚠️ Disputes", "⚠️ Спори"), callback_data="mod:disputes")
     b.button(text=_tr(lng, "💼 Active deals", "💼 Активні угоди"), callback_data="mod:active_deals")
     b.button(text=_tr(lng, "💬 Messages on review", "💬 Повідомлення на перевірці"), callback_data="mod:held_messages")

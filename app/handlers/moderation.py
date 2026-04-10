@@ -9,6 +9,7 @@ from app.moderation_utils import is_moderator_telegram_id
 from app.order_repo import list_active_deals, get_order_by_id, set_payment_status, create_deal_message, add_to_balance
 from app.moderation_repo import (
     list_pending_verifications,
+    list_verified_editors,
     list_held_messages,
     list_dispute_deals,
     get_deal_by_id,
@@ -193,6 +194,36 @@ async def mod_verifications(call: CallbackQuery):
     if not user:
         return
     await _show_pending_verifications(call, 0, user.language)
+    await call.answer()
+
+@router.callback_query(F.data == "mod:verified_users")
+async def mod_verified_users(call: CallbackQuery):
+    user = await _ensure_moderator(call)
+    if not user:
+        return
+    items = await list_verified_editors(offset=0, limit=10)
+    if not items:
+        await _safe_edit_or_send(
+            call,
+            _t(user, "✅ Verified users\n\nNo verified users yet.", "✅ Верифіковані користувачі\n\nВерифікованих користувачів поки немає."),
+            reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
+        )
+        return
+
+    text = _t(user, "✅ Verified users\n\n", "✅ Верифіковані користувачі\n\n")
+    for p in items:
+        price = _money_from_minor(int(p.get("price_from_minor") or 0))
+        text += f"user_id: {p.get('user_id')}\n"
+        text += f"name: {p.get('name') or '?'}\n"
+        text += f"skills: {p.get('skills') or '?'}\n"
+        text += f"price: {price}\n"
+        text += f"portfolio: {p.get('portfolio_url') or '?'}\n\n"
+
+    await _safe_edit_or_send(
+        call,
+        text,
+        reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
+    )
     await call.answer()
 
 @router.callback_query(F.data.startswith("mod:verifications:page:"))
