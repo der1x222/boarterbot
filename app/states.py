@@ -55,6 +55,13 @@ class RevisionRequest(StatesGroup):
 class RevisionCounter(StatesGroup):
     waiting_price = State()
 
+class RevisionRequest(StatesGroup):
+    waiting_description = State()
+    waiting_price = State()
+
+class RevisionCounter(StatesGroup):
+    waiting_price = State()
+
 class BalanceWithdraw(StatesGroup):
     waiting_amount = State()
     waiting_description = State()
