@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 
-from app.models import get_user_by_telegram_id, get_user_by_id
+from app.models import get_user_by_telegram_id, get_user_by_id, get_users_by_name
 from app.profile_repo import set_editor_verification
 from app.menu_utils import get_menu_markup_for_user
 from app.moderation_utils import is_moderator_telegram_id
@@ -830,7 +830,7 @@ async def mod_search_start(call: CallbackQuery, state: FSMContext):
     await state.set_state(ModerationSearch.waiting_query)
     await _safe_edit_or_send(
         call,
-        _t(user, "🔎 Search\n\nEnter user_id or deal_id:", "🔎 Пошук\n\nВведіть user_id або deal_id:"),
+        _t(user, "🔎 Search\n\nEnter user name, user_id or deal_id:", "🔎 Пошук\n\nВведіть ім'я користувача, user_id або deal_id:"),
         reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
     )
     await call.answer()
@@ -843,37 +843,55 @@ async def mod_search_result(message: Message, state: FSMContext):
         return
 
     raw = (message.text or "").strip()
-    if not raw.isdigit():
-        await message.answer(_t(user, "Enter a number (user_id or deal_id).", "Введіть число (user_id або deal_id)."))
+    if not raw:
+        await message.answer(_t(user, "Enter a search query.", "Введіть запит для пошуку."))
         return
 
-    query_id = int(raw)
-    found_user = await get_user_by_id(query_id)
-    found_deal = await get_deal_by_id(query_id)
-
     lines = [_t(user, "🔎 Search", "🔎 Пошук")]
-    if found_user:
-        username = f"@{found_user.username}" if found_user.username else "—"
-        lines.append(
-            _t(user, "\nUser:", "\nКористувач:") +
-            f"\n  user_id: {found_user.id}"
-            f"\n  telegram_id: {found_user.telegram_id}"
-            f"\n  username: {username}"
-            f"\n  display_name: {found_user.display_name or '—'}"
-            f"\n  role: {found_user.role}"
-        )
-    if found_deal:
-        lines.append(
-            _t(user, "\nDeal:", "\nУгода:") +
-            f"\n  deal_id: {found_deal.get('id')}"
-            f"\n  client_id: {found_deal.get('client_id')}"
-            f"\n  editor_id: {found_deal.get('editor_id')}"
-            f"\n  status: {found_deal.get('status')}"
-            f"\n  price_minor: {found_deal.get('price_minor')}"
-        )
 
-    if not found_user and not found_deal:
-        lines.append(_t(user, "\nNothing found.", "\nНічого не знайдено."))
+    if raw.isdigit():
+        query_id = int(raw)
+        found_user = await get_user_by_id(query_id)
+        found_deal = await get_deal_by_id(query_id)
+
+        if found_user:
+            username = f"@{found_user.username}" if found_user.username else "—"
+            lines.append(
+                _t(user, "\nUser:", "\nКористувач:") +
+                f"\n  user_id: {found_user.id}"
+                f"\n  telegram_id: {found_user.telegram_id}"
+                f"\n  username: {username}"
+                f"\n  display_name: {found_user.display_name or '—'}"
+                f"\n  role: {found_user.role}"
+            )
+        if found_deal:
+            lines.append(
+                _t(user, "\nDeal:", "\nУгода:") +
+                f"\n  deal_id: {found_deal.get('id')}"
+                f"\n  client_id: {found_deal.get('client_id')}"
+                f"\n  editor_id: {found_deal.get('editor_id')}"
+                f"\n  status: {found_deal.get('status')}"
+                f"\n  price_minor: {found_deal.get('price_minor')}"
+            )
+
+        if not found_user and not found_deal:
+            lines.append(_t(user, "\nNothing found.", "\nНічого не знайдено."))
+    else:
+        # Search by name
+        found_users = await get_users_by_name(raw)
+        if found_users:
+            for u in found_users:
+                username = f"@{u.username}" if u.username else "—"
+                lines.append(
+                    _t(user, "\nUser:", "\nКористувач:") +
+                    f"\n  user_id: {u.id}"
+                    f"\n  telegram_id: {u.telegram_id}"
+                    f"\n  username: {username}"
+                    f"\n  display_name: {u.display_name or '—'}"
+                    f"\n  role: {u.role}"
+                )
+        else:
+            lines.append(_t(user, "\nNo users found with that name.", "\nКористувачів з таким ім'ям не знайдено."))
 
     await state.clear()
     await message.answer("\n".join(lines), reply_markup=await get_menu_markup_for_user(user))
