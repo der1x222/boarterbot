@@ -206,6 +206,23 @@ def kb_mod_user_controls(user_id: int) -> InlineKeyboardMarkup:
     b.adjust(2, 1, 1)
     return b.as_markup()
 
+def kb_mod_verified_users_list(users: list[dict], offset: int, lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    for u in users:
+        name = (u.get("name") or "?").strip()
+        if len(name) > 20:
+            name = name[:17] + "..."
+        label = f"ID:{u['user_id']} | {name} | ✅"
+        b.button(text=label, callback_data=f"mod:verified_user:{u['user_id']}")
+    # Navigation
+    nav_buttons = []
+    if offset > 0:
+        nav_buttons.append(InlineKeyboardButton(text=_tr(lang, "⬅️ Prev", "⬅️ Попередній"), callback_data=f"mod:verified_users:page:{offset - 10}"))
+    nav_buttons.append(InlineKeyboardButton(text=_tr(lang, "▶️ Next", "▶️ Наступний"), callback_data=f"mod:verified_users:page:{offset + 10}"))
+    nav_buttons.append(InlineKeyboardButton(text=_tr(lang, "Menu", "Меню"), callback_data="common:menu"))
+    b.row(*nav_buttons)
+    return b.as_markup()
+
 def kb_edit_editor_menu(lang: str | None = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.button(text=_tr(lang, "Change name", "Змінити ім'я"), callback_data="edit:editor:name")

@@ -25,6 +25,7 @@ from app.keyboards import (
     kb_mod_held_controls,
     kb_mod_dispute_controls,
     kb_mod_user_controls,
+    kb_mod_verified_users_list,
     kb_moderation_menu,
     kb_nav_menu_help,
     kb_verify_chat_reply,
@@ -106,6 +107,55 @@ async def _show_pending_verifications(call: CallbackQuery, offset: int, lang: st
         call,
         text,
         reply_markup=kb_mod_verification_controls(int(p["user_id"]), offset, lang),
+    )
+
+async def _show_verified_users(call: CallbackQuery, offset: int, lang: str | None = None):
+    items = await list_verified_editors(offset=offset, limit=10)
+    if not items:
+        await _safe_edit_or_send(
+            call,
+            texts.tr(lang, "✅ Verified users\n\nNo verified users yet.", "✅ Верифіковані користувачі\n\nВерифікованих користувачів поки немає."),
+            reply_markup=kb_nav_menu_help(back="common:menu", lang=lang),
+        )
+        return
+
+    text = texts.tr(lang, "✅ Verified users\n\nSelect a user to view details.", "✅ Верифіковані користувачі\n\nОберіть користувача для перегляду деталей.")
+    await _safe_edit_or_send(
+        call,
+        text,
+        reply_markup=kb_mod_verified_users_list(items, offset, lang),
+    )
+
+async def _show_verified_user_detail(call: CallbackQuery, user_id: int, lang: str | None = None):
+    from app.profile_repo import get_editor_profile
+    p = await get_editor_profile(user_id)
+    if not p or p.get("verification_status") != "verified":
+        await _safe_edit_or_send(
+            call,
+            texts.tr(lang, "User not found or not verified.", "Користувача не знайдено або він не верифікований."),
+            reply_markup=kb_nav_menu_help(back="mod:verified_users", lang=lang),
+        )
+        return
+
+    price = _money_from_minor(int(p.get("price_from_minor") or 0))
+    name_label = texts.tr(lang, "name", "ім'я")
+    skills_label = texts.tr(lang, "skills", "спеціалізація")
+    price_label = texts.tr(lang, "price", "ціна")
+    portfolio_label = texts.tr(lang, "portfolio", "портфоліо")
+    status_label = texts.tr(lang, "status", "статус")
+    text = (
+        texts.tr(lang, "✅ Verified user details\n\n", "✅ Деталі верифікованого користувача\n\n") +
+        f"user_id: {p.get('user_id')}\n"
+        f"{name_label}: {p.get('name') or '?'}\n"
+        f"{skills_label}: {p.get('skills') or '?'}\n"
+        f"{price_label}: {price}\n"
+        f"{portfolio_label}: {p.get('portfolio_url') or '?'}\n"
+        f"{status_label}: {p.get('verification_status')}"
+    )
+    await _safe_edit_or_send(
+        call,
+        text,
+        reply_markup=kb_nav_menu_help(back="mod:verified_users", lang=lang),
     )
 
 async def _show_held_messages(call: CallbackQuery, offset: int, lang: str | None = None):
@@ -201,29 +251,33 @@ async def mod_verified_users(call: CallbackQuery):
     user = await _ensure_moderator(call)
     if not user:
         return
-    items = await list_verified_editors(offset=0, limit=10)
-    if not items:
-        await _safe_edit_or_send(
-            call,
-            _t(user, "✅ Verified users\n\nNo verified users yet.", "✅ Верифіковані користувачі\n\nВерифікованих користувачів поки немає."),
-            reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
-        )
+    await _show_verified_users(call, 0, user.language)
+    await call.answer()
+
+@router.callback_query(F.data.startswith("mod:verified_users:page:"))
+async def mod_verified_users_page(call: CallbackQuery):
+    user = await _ensure_moderator(call)
+    if not user:
         return
+    try:
+        offset = int(call.data.split(":")[-1])
+    except ValueError:
+        await call.answer(_t(user, "Invalid offset.", "Некоректний offset."), show_alert=True)
+        return
+    await _show_verified_users(call, offset, user.language)
+    await call.answer()
 
-    text = _t(user, "✅ Verified users\n\n", "✅ Верифіковані користувачі\n\n")
-    for p in items:
-        price = _money_from_minor(int(p.get("price_from_minor") or 0))
-        text += f"user_id: {p.get('user_id')}\n"
-        text += f"name: {p.get('name') or '?'}\n"
-        text += f"skills: {p.get('skills') or '?'}\n"
-        text += f"price: {price}\n"
-        text += f"portfolio: {p.get('portfolio_url') or '?'}\n\n"
-
-    await _safe_edit_or_send(
-        call,
-        text,
-        reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
-    )
+@router.callback_query(F.data.startswith("mod:verified_user:"))
+async def mod_verified_user_detail(call: CallbackQuery):
+    user = await _ensure_moderator(call)
+    if not user:
+        return
+    try:
+        target_user_id = int(call.data.split(":")[-1])
+    except ValueError:
+        await call.answer(_t(user, "Invalid user ID.", "Некоректний ID користувача."), show_alert=True)
+        return
+    await _show_verified_user_detail(call, target_user_id, user.language)
     await call.answer()
 
 @router.callback_query(F.data.startswith("mod:verifications:page:"))
