@@ -7,7 +7,7 @@ import re
 from urllib.parse import urlparse
 
 from app.models import get_user_by_telegram_id, get_user_by_id, list_moderators
-from app.keyboards import kb_nav_menu_help, kb_orders_list, kb_order_detail, kb_deal_menu, kb_mod_deal_menu, kb_editor_order_detail, kb_deal_chat_controls, kb_dispute_join, kb_dispute_controls, kb_deal_chat_menu, kb_proposal_actions, kb_deal_chat_link_controls, kb_deadline_quick, kb_revision_request_menu, kb_revision_response_menu, kb_order_completion_menu, kb_client_completion_menu
+from app.keyboards import kb_nav_menu_help, kb_orders_list, kb_order_detail, kb_deal_menu, kb_mod_deal_menu, kb_editor_order_detail, kb_deal_chat_controls, kb_dispute_join, kb_dispute_controls, kb_deal_chat_menu, kb_proposal_actions, kb_deal_chat_link_controls, kb_deadline_quick, kb_revision_request_menu, kb_revision_response_menu, kb_order_completion_menu, kb_client_completion_menu, kb_order_category, kb_order_platform, kb_order_reference_controls, kb_order_category_edit, kb_order_platform_edit, kb_order_reference_controls_edit
 from app.menu_utils import get_menu_markup_for_user
 from app.states import CreateOrder, DealChange, EditOrder, EditorProposal, DealChat, DisputeChat, DisputeOpenReason, ChatRequest, RevisionRequest, RevisionCounter
 from app.order_repo import create_order, list_orders_for_client, get_order_for_client, accept_order, get_order_by_id, update_order_if_open, open_dispute, set_dispute_agree, close_dispute, set_payment_link, create_deal_message, get_deal_messages, request_revision, respond_to_revision, set_revision_payment_link, mark_revision_paid, mark_final_video_sent, confirm_order_completion, complete_order_and_credit_editor
@@ -67,12 +67,115 @@ async def send_clean_from_call(call: CallbackQuery, state: FSMContext, text: str
     msg = await call.message.answer(text, reply_markup=reply_markup)
     await set_last_bot_message(state, msg.message_id)
     return msg
+
+def _order_category_label(category: str | None, lang: str | None) -> str:
+    labels = {
+        "ad": _tl(lang, "Ad / promo", "Реклама / промо"),
+        "youtube": _tl(lang, "YouTube video", "YouTube-відео"),
+        "podcast": _tl(lang, "Interview / podcast", "Інтерв'ю / подкаст"),
+        "shorts": _tl(lang, "Shorts / Reels / TikTok", "Shorts / Reels / TikTok"),
+        "other": _tl(lang, "Other", "Інше"),
+    }
+    return labels.get((category or "").strip(), _tl(lang, "Not selected", "Не вибрано"))
+
+def _order_platform_label(platform: str | None, lang: str | None) -> str:
+    labels = {
+        "youtube": "YouTube",
+        "instagram": "Instagram",
+        "tiktok": "TikTok",
+        "facebook": "Facebook",
+        "other": _tl(lang, "Other", "Інше"),
+    }
+    return labels.get((platform or "").strip(), _tl(lang, "Not selected", "Не вибрано"))
+
+def _is_valid_youtube_url(raw: str) -> bool:
+    try:
+        parsed = urlparse(raw.strip())
+    except Exception:
+        return False
+    host = (parsed.netloc or "").lower()
+    return host.endswith("youtube.com") or host == "youtu.be" or host.endswith(".youtu.be")
+
+def _build_order_description(data: dict, lang: str | None) -> str:
+    task_details = (data.get("task_details") or "").strip()
+    materials = (data.get("materials") or "").strip()
+    reference_url = (data.get("reference_url") or "").strip() or _tl(lang, "No reference", "Без референсу")
+    category = _order_category_label(data.get("category"), lang)
+    platform = _order_platform_label(data.get("platform"), lang)
+    return (
+        f"{_tl(lang, 'Category', 'Категорія')}: {category}\n"
+        f"{_tl(lang, 'Platform', 'Платформа')}: {platform}\n\n"
+        f"{_tl(lang, 'Task details', 'Деталі завдання')}:\n{task_details}\n\n"
+        f"{_tl(lang, 'Source materials', 'Матеріали від замовника')}:\n{materials}\n\n"
+        f"{_tl(lang, 'Reference (YouTube)', 'Референс (YouTube)')}: {reference_url}"
+    )
+
+def _build_order_preview(lang: str | None, data: dict) -> str:
+    title = (data.get("title") or "").strip() or _tl(lang, "Not filled", "Не заповнено")
+    budget_minor = int(data.get("budget_minor") or 0)
+    revision_minor = int(data.get("revision_price_minor") or 0)
+    category = _order_category_label(data.get("category"), lang)
+    platform = _order_platform_label(data.get("platform"), lang)
+    task_details = (data.get("task_details") or "").strip() or _tl(lang, "Not filled", "Не заповнено")
+    materials = (data.get("materials") or "").strip() or _tl(lang, "Not filled", "Не заповнено")
+    reference_url = (data.get("reference_url") or "").strip() or _tl(lang, "No reference", "Без референсу")
+    return (
+        f"{_tl(lang, 'Preview of your order', 'Попередній вигляд вашого оголошення')}\n\n"
+        f"{_tl(lang, 'Title', 'Назва')}: {title}\n"
+        f"{_tl(lang, 'Category', 'Категорія')}: {category}\n"
+        f"{_tl(lang, 'Platform', 'Платформа')}: {platform}\n"
+        f"{_tl(lang, 'Task details', 'Деталі завдання')}: {task_details}\n"
+        f"{_tl(lang, 'Materials', 'Матеріали')}: {materials}\n"
+        f"{_tl(lang, 'Reference', 'Референс')}: {reference_url}\n"
+        f"{_tl(lang, 'Budget', 'Бюджет')}: {budget_minor / 100:.2f} USD\n"
+        f"{_tl(lang, 'Revision price', 'Ціна правки')}: {revision_minor / 100:.2f} USD"
+    )
+
+def _parse_structured_description(description: str) -> dict:
+    parsed = {
+        "category": "",
+        "platform": "",
+        "task_details": "",
+        "materials": "",
+        "reference_url": "",
+    }
+    if not description:
+        return parsed
+    lines = description.splitlines()
+    for line in lines:
+        if line.startswith("Category: "):
+            value = line.replace("Category: ", "", 1).strip().lower()
+            if "ad" in value or "promo" in value:
+                parsed["category"] = "ad"
+            elif "youtube" in value:
+                parsed["category"] = "youtube"
+            elif "podcast" in value or "interview" in value:
+                parsed["category"] = "podcast"
+            elif "shorts" in value or "reels" in value or "tiktok" in value:
+                parsed["category"] = "shorts"
+            elif value:
+                parsed["category"] = "other"
+        elif line.startswith("Platform: "):
+            value = line.replace("Platform: ", "", 1).strip().lower()
+            if value in {"youtube", "instagram", "tiktok", "facebook"}:
+                parsed["platform"] = value
+            elif value:
+                parsed["platform"] = "other"
+        elif line.startswith("Task details:"):
+            parsed["task_details"] = description.split("Task details:\n", 1)[-1].split("\n\n", 1)[0].strip()
+        elif line.startswith("Source materials:"):
+            parsed["materials"] = description.split("Source materials:\n", 1)[-1].split("\n\n", 1)[0].strip()
+        elif line.startswith("Reference (YouTube): "):
+            ref = line.replace("Reference (YouTube): ", "", 1).strip()
+            parsed["reference_url"] = "" if ref.lower() == "no reference" else ref
+    return parsed
 async def _finalize_create_order(user, state: FSMContext, bot, chat_id: int, deadline_at: datetime):
     data = await state.get_data()
+    description = _build_order_description(data, user.language)
     order_id = await create_order(
         client_id=user.id,
         title=data.get("title", ""),
-        description=data.get("description", ""),
+        description=description,
         budget_minor=int(data.get("budget_minor") or 0),
         revision_price_minor=int(data.get("revision_price_minor") or 0),
         deadline_at=deadline_at,
@@ -91,11 +194,12 @@ async def _finalize_create_order(user, state: FSMContext, bot, chat_id: int, dea
 async def _finalize_edit_order(user, state: FSMContext, bot, chat_id: int, deadline_at: datetime):
     data = await state.get_data()
     order_id = int(data.get("order_id") or 0)
+    description = _build_order_description(data, user.language)
     ok = await update_order_if_open(
         order_id=order_id,
         client_id=user.id,
         title=data.get("title", ""),
-        description=data.get("description", ""),
+        description=description,
         budget_minor=int(data.get("budget_minor") or 0),
         revision_price_minor=int(data.get("revision_price_minor") or 0),
         deadline_at=deadline_at,
@@ -134,7 +238,11 @@ async def create_order_start(call: CallbackQuery, state: FSMContext):
     await send_clean_from_call(
         call,
         state,
-        texts.tr(user.language, "Enter order title:", "Введіть назву замовлення:"),
+        texts.tr(
+            user.language,
+            "Step 1/8. Enter a short order title.",
+            "Крок 1/8. Введіть коротку назву замовлення.",
+        ),
         reply_markup=kb_nav_menu_help(back="order:back:menu", lang=user.language),
     )
 
@@ -158,7 +266,7 @@ async def create_order_back(call: CallbackQuery, state: FSMContext):
         await send_clean_from_call(
             call,
             state,
-            texts.tr(user.language, "Menu:", "????:"),
+            texts.tr(user.language, "Menu:", "Меню:"),
             reply_markup=await get_menu_markup_for_user(user),
         )
         return
@@ -173,13 +281,69 @@ async def create_order_back(call: CallbackQuery, state: FSMContext):
         )
         return
 
-    if action == "description":
-        await state.set_state(CreateOrder.waiting_description)
+    if action == "category":
+        await state.set_state(CreateOrder.waiting_category)
         await send_clean_from_call(
             call,
             state,
-            texts.tr(user.language, "Describe the task and requirements (you can include a link):", "Опишіть завдання та вимоги (можна додати посилання):"),
-            reply_markup=kb_nav_menu_help(back="order:back:title", lang=user.language),
+            texts.tr(
+                user.language,
+                "Step 2/8. Choose video category:",
+                "Крок 2/8. Оберіть категорію відео:",
+            ),
+            reply_markup=kb_order_category(user.language),
+        )
+        return
+
+    if action == "platform":
+        await state.set_state(CreateOrder.waiting_platform)
+        await send_clean_from_call(
+            call,
+            state,
+            texts.tr(user.language, "Step 3/8. Choose target platform:", "Крок 3/8. Оберіть платформу публікації:"),
+            reply_markup=kb_order_platform(user.language),
+        )
+        return
+
+    if action == "task_details":
+        await state.set_state(CreateOrder.waiting_task_details)
+        await send_clean_from_call(
+            call,
+            state,
+            texts.tr(
+                user.language,
+                "Step 4/8. Describe exactly what should be done (structure, style, important moments).",
+                "Крок 4/8. Опишіть, що саме треба зробити (структура, стиль, важливі моменти).",
+            ),
+            reply_markup=kb_nav_menu_help(back="order:back:platform", lang=user.language),
+        )
+        return
+
+    if action == "materials":
+        await state.set_state(CreateOrder.waiting_materials)
+        await send_clean_from_call(
+            call,
+            state,
+            texts.tr(
+                user.language,
+                "Step 5/8. What source materials do you have? (raw footage, script, music, subtitles, etc.)",
+                "Крок 5/8. Які матеріали у вас вже є? (сирі файли, сценарій, музика, субтитри тощо)",
+            ),
+            reply_markup=kb_nav_menu_help(back="order:back:task_details", lang=user.language),
+        )
+        return
+
+    if action == "reference":
+        await state.set_state(CreateOrder.waiting_reference_url)
+        await send_clean_from_call(
+            call,
+            state,
+            texts.tr(
+                user.language,
+                "Step 6/8. Paste a YouTube link as a reference (example style). You can skip this step.",
+                "Крок 6/8. Вставте YouTube-посилання на приклад монтажу. Цей крок можна пропустити.",
+            ),
+            reply_markup=kb_order_reference_controls(user.language),
         )
         return
 
@@ -188,8 +352,8 @@ async def create_order_back(call: CallbackQuery, state: FSMContext):
         await send_clean_from_call(
             call,
             state,
-            texts.tr(user.language, "Enter budget in USD (number). Example: 50", "Введіть бюджет у USD (число). Приклад: 50"),
-            reply_markup=kb_nav_menu_help(back="order:back:description", lang=user.language),
+            texts.tr(user.language, "Step 7/8. Enter budget in USD. Example: 50", "Крок 7/8. Введіть бюджет у USD. Приклад: 50"),
+            reply_markup=kb_nav_menu_help(back="order:back:reference", lang=user.language),
         )
         return
 
@@ -198,7 +362,7 @@ async def create_order_back(call: CallbackQuery, state: FSMContext):
         await send_clean_from_call(
             call,
             state,
-            texts.tr(user.language, "Enter revision price in USD (number). Example: 10", "Введіть ціну за правки у USD (число). Приклад: 10"),
+            texts.tr(user.language, "Step 8/8. Enter revision price in USD. Example: 10", "Крок 8/8. Введіть ціну правки у USD. Приклад: 10"),
             reply_markup=kb_nav_menu_help(back="order:back:budget", lang=user.language),
         )
         return
@@ -242,16 +406,52 @@ async def create_order_title(message: Message, state: FSMContext):
         return
 
     await state.update_data(title=title)
-    await state.set_state(CreateOrder.waiting_description)
+    await state.set_state(CreateOrder.waiting_category)
+    data = await state.get_data()
     await send_clean(
         message,
         state,
-        texts.tr(user.language, "Describe the task and requirements (you can include a link):", "Опишіть завдання та вимоги (можна додати посилання):"),
-        reply_markup=kb_nav_menu_help(back="order:back:title", lang=user.language),
+        f"{_build_order_preview(user.language, data)}\n\n"
+        + texts.tr(user.language, "Step 2/8. Choose video category:", "Крок 2/8. Оберіть категорію відео:"),
+        reply_markup=kb_order_category(user.language),
     )
 
-@router.message(CreateOrder.waiting_description)
-async def create_order_description(message: Message, state: FSMContext):
+@router.callback_query(F.data.startswith("order:create:category:"))
+async def create_order_category_choose(call: CallbackQuery, state: FSMContext):
+    user = await get_user_by_telegram_id(call.from_user.id)
+    if not user:
+        await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
+        return
+    await state.update_data(category=call.data.split(":")[-1])
+    await state.set_state(CreateOrder.waiting_platform)
+    data = await state.get_data()
+    await call.answer()
+    await send_clean_from_call(
+        call,
+        state,
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 3/8. Choose target platform:', 'Крок 3/8. Оберіть платформу публікації:')}",
+        reply_markup=kb_order_platform(user.language),
+    )
+
+@router.callback_query(F.data.startswith("order:create:platform:"))
+async def create_order_platform_choose(call: CallbackQuery, state: FSMContext):
+    user = await get_user_by_telegram_id(call.from_user.id)
+    if not user:
+        await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
+        return
+    await state.update_data(platform=call.data.split(":")[-1])
+    await state.set_state(CreateOrder.waiting_task_details)
+    data = await state.get_data()
+    await call.answer()
+    await send_clean_from_call(
+        call,
+        state,
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 4/8. Describe exactly what should be done (structure, style, important moments).', 'Крок 4/8. Опишіть, що саме треба зробити (структура, стиль, важливі моменти).')}",
+        reply_markup=kb_nav_menu_help(back="order:back:platform", lang=user.language),
+    )
+
+@router.message(CreateOrder.waiting_task_details)
+async def create_order_task_details(message: Message, state: FSMContext):
     user = await get_user_by_telegram_id(message.from_user.id)
     if not user:
         return
@@ -267,18 +467,103 @@ async def create_order_description(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            texts.tr(user.language, "Description cannot be empty. Describe the task:", "Опис не може бути порожнім. Опишіть завдання:"),
-            reply_markup=kb_nav_menu_help(back="order:back:title", lang=user.language),
+            texts.tr(user.language, "Task details cannot be empty.", "Опис завдання не може бути порожнім."),
+            reply_markup=kb_nav_menu_help(back="order:back:platform", lang=user.language),
         )
         return
 
-    await state.update_data(description=description)
-    await state.set_state(CreateOrder.waiting_budget)
+    await state.update_data(task_details=description)
+    await state.set_state(CreateOrder.waiting_materials)
+    data = await state.get_data()
     await send_clean(
         message,
         state,
-        texts.tr(user.language, "Enter budget in USD (number). Example: 50", "Введіть бюджет у USD (число). Приклад: 50"),
-        reply_markup=kb_nav_menu_help(back="order:back:description", lang=user.language),
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 5/8. What source materials do you have? (raw footage, script, music, subtitles, etc.)', 'Крок 5/8. Які матеріали у вас вже є? (сирі файли, сценарій, музика, субтитри тощо)')}",
+        reply_markup=kb_nav_menu_help(back="order:back:task_details", lang=user.language),
+    )
+
+@router.message(CreateOrder.waiting_materials)
+async def create_order_materials(message: Message, state: FSMContext):
+    user = await get_user_by_telegram_id(message.from_user.id)
+    if not user:
+        return
+    if user.role != "client":
+        await state.clear()
+        await message.answer(texts.tr(user.language, "Only clients can create orders.", "Тільки клієнти можуть створювати замовлення."))
+        return
+
+    raw = (message.text or "").strip()
+    await safe_delete_message(message)
+
+    if not raw:
+        await send_clean(
+            message,
+            state,
+            texts.tr(user.language, "Please describe available materials.", "Будь ласка, опишіть доступні матеріали."),
+            reply_markup=kb_nav_menu_help(back="order:back:task_details", lang=user.language),
+        )
+        return
+
+    await state.update_data(materials=raw)
+    await state.set_state(CreateOrder.waiting_reference_url)
+    data = await state.get_data()
+    await send_clean(
+        message,
+        state,
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 6/8. Paste a YouTube link as a reference (example style). You can skip this step.', 'Крок 6/8. Вставте YouTube-посилання на приклад монтажу. Цей крок можна пропустити.')}",
+        reply_markup=kb_order_reference_controls(user.language),
+    )
+
+@router.callback_query(F.data == "order:create:reference:skip")
+async def create_order_reference_skip(call: CallbackQuery, state: FSMContext):
+    user = await get_user_by_telegram_id(call.from_user.id)
+    if not user:
+        await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
+        return
+    await state.update_data(reference_url="")
+    await state.set_state(CreateOrder.waiting_budget)
+    data = await state.get_data()
+    await call.answer()
+    await send_clean_from_call(
+        call,
+        state,
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 7/8. Enter budget in USD. Example: 50', 'Крок 7/8. Введіть бюджет у USD. Приклад: 50')}",
+        reply_markup=kb_nav_menu_help(back="order:back:reference", lang=user.language),
+    )
+
+@router.message(CreateOrder.waiting_reference_url)
+async def create_order_reference_url(message: Message, state: FSMContext):
+    user = await get_user_by_telegram_id(message.from_user.id)
+    if not user:
+        return
+    if user.role != "client":
+        await state.clear()
+        await message.answer(texts.tr(user.language, "Only clients can create orders.", "Тільки клієнти можуть створювати замовлення."))
+        return
+
+    raw = (message.text or "").strip()
+    await safe_delete_message(message)
+    if not _is_valid_youtube_url(raw):
+        await send_clean(
+            message,
+            state,
+            texts.tr(
+                user.language,
+                "Please paste a valid YouTube URL (youtube.com or youtu.be), or press Skip.",
+                "Вставте коректне посилання YouTube (youtube.com або youtu.be), або натисніть Пропустити.",
+            ),
+            reply_markup=kb_order_reference_controls(user.language),
+        )
+        return
+
+    await state.update_data(reference_url=raw)
+    await state.set_state(CreateOrder.waiting_budget)
+    data = await state.get_data()
+    await send_clean(
+        message,
+        state,
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 7/8. Enter budget in USD. Example: 50', 'Крок 7/8. Введіть бюджет у USD. Приклад: 50')}",
+        reply_markup=kb_nav_menu_help(back="order:back:reference", lang=user.language),
     )
 
 @router.message(CreateOrder.waiting_budget)
@@ -299,16 +584,17 @@ async def create_order_budget(message: Message, state: FSMContext):
             message,
             state,
             texts.tr(user.language, "Budget must be a number. Example: 50", "Бюджет має бути числом. Приклад: 50"),
-            reply_markup=kb_nav_menu_help(back="order:back:description", lang=user.language),
+            reply_markup=kb_nav_menu_help(back="order:back:reference", lang=user.language),
         )
         return
 
     await state.update_data(budget_minor=int(raw) * 100)
     await state.set_state(CreateOrder.waiting_revision_price)
+    data = await state.get_data()
     await send_clean(
         message,
         state,
-        texts.tr(user.language, "Enter revision price in USD (number). Example: 10", "Введіть ціну за правки у USD (число). Приклад: 10"),
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 8/8. Enter revision price in USD. Example: 10', 'Крок 8/8. Введіть ціну правки у USD. Приклад: 10')}",
         reply_markup=kb_nav_menu_help(back="order:back:budget", lang=user.language),
     )
 
@@ -336,10 +622,12 @@ async def create_order_revision_price(message: Message, state: FSMContext):
 
     await state.update_data(revision_price_minor=int(raw) * 100)
     await state.set_state(CreateOrder.waiting_deadline)
+    data = await state.get_data()
     await send_clean(
         message,
         state,
-        texts.tr(
+        f"{_build_order_preview(user.language, data)}\n\n"
+        + texts.tr(
             user.language,
             "Choose a deadline or type a custom date (YYYY-MM-DD HH:MM).",
             "Оберіть термін або введіть власну дату (РРРР-ММ-ДД ГГ:ХХ).",
@@ -366,7 +654,7 @@ async def deadline_quick_select(call: CallbackQuery, state: FSMContext):
 
     action = parts[1]
     if action == "custom":
-        back_cb = "order:back:revision_price" if current_state == CreateOrder.waiting_deadline.state else "order_edit:cancel"
+        back_cb = "order:back:revision_price" if current_state == CreateOrder.waiting_deadline.state else "order_edit:back:revision_price"
         cancel_cb = "order:cancel" if current_state == CreateOrder.waiting_deadline.state else "order_edit:cancel"
         await call.answer()
         await send_clean_from_call(
@@ -499,46 +787,144 @@ async def order_view(call: CallbackQuery):
 async def order_edit_cancel(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer(texts.tr(None, "Type /start", "????????? /start"), show_alert=True)
+        await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
         return
     await state.clear()
     await call.answer()
     await send_clean_from_call(
         call,
         state,
-        texts.tr(user.language, "Menu:", "????:"),
+        texts.tr(user.language, "Menu:", "Меню:"),
         reply_markup=await get_menu_markup_for_user(user),
     )
+
+@router.callback_query(F.data.startswith("order_edit:back:"))
+async def order_edit_back(call: CallbackQuery, state: FSMContext):
+    user = await get_user_by_telegram_id(call.from_user.id)
+    if not user:
+        await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
+        return
+    action = call.data.split(":")[-1]
+    data = await state.get_data()
+    await call.answer()
+
+    if action == "title":
+        await state.set_state(EditOrder.waiting_title)
+        await send_clean_from_call(
+            call,
+            state,
+            texts.tr(user.language, "Step 1/8. Enter a short order title.", "Крок 1/8. Введіть коротку назву замовлення."),
+            reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
+        )
+        return
+    if action == "category":
+        await state.set_state(EditOrder.waiting_category)
+        await send_clean_from_call(
+            call,
+            state,
+            f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 2/8. Choose video category:', 'Крок 2/8. Оберіть категорію відео:')}",
+            reply_markup=kb_order_category_edit(user.language),
+        )
+        return
+    if action == "platform":
+        await state.set_state(EditOrder.waiting_platform)
+        await send_clean_from_call(
+            call,
+            state,
+            f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 3/8. Choose target platform:', 'Крок 3/8. Оберіть платформу публікації:')}",
+            reply_markup=kb_order_platform_edit(user.language),
+        )
+        return
+    if action == "task_details":
+        await state.set_state(EditOrder.waiting_task_details)
+        await send_clean_from_call(
+            call,
+            state,
+            f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 4/8. Describe exactly what should be done (structure, style, important moments).', 'Крок 4/8. Опишіть, що саме треба зробити (структура, стиль, важливі моменти).')}",
+            reply_markup=kb_nav_menu_help(back="order_edit:back:platform", lang=user.language),
+        )
+        return
+    if action == "materials":
+        await state.set_state(EditOrder.waiting_materials)
+        await send_clean_from_call(
+            call,
+            state,
+            f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 5/8. What source materials do you have? (raw footage, script, music, subtitles, etc.)', 'Крок 5/8. Які матеріали у вас вже є? (сирі файли, сценарій, музика, субтитри тощо)')}",
+            reply_markup=kb_nav_menu_help(back="order_edit:back:task_details", lang=user.language),
+        )
+        return
+    if action == "reference":
+        await state.set_state(EditOrder.waiting_reference_url)
+        await send_clean_from_call(
+            call,
+            state,
+            f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 6/8. Paste a YouTube link as a reference (example style). You can skip this step.', 'Крок 6/8. Вставте YouTube-посилання на приклад монтажу. Цей крок можна пропустити.')}",
+            reply_markup=kb_order_reference_controls_edit(user.language),
+        )
+        return
+    if action == "budget":
+        await state.set_state(EditOrder.waiting_budget)
+        await send_clean_from_call(
+            call,
+            state,
+            f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 7/8. Enter budget in USD. Example: 50', 'Крок 7/8. Введіть бюджет у USD. Приклад: 50')}",
+            reply_markup=kb_nav_menu_help(back="order_edit:back:reference", lang=user.language),
+        )
+        return
+    if action == "revision_price":
+        await state.set_state(EditOrder.waiting_revision_price)
+        await send_clean_from_call(
+            call,
+            state,
+            f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 8/8. Enter revision price in USD. Example: 10', 'Крок 8/8. Введіть ціну правки у USD. Приклад: 10')}",
+            reply_markup=kb_nav_menu_help(back="order_edit:back:budget", lang=user.language),
+        )
+        return
 
 @router.callback_query(F.data.startswith("order:edit:"))
 async def order_edit_start(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer(texts.tr(None, "Type /start", "????????? /start"), show_alert=True)
+        await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
         return
     if user.role != "client":
-        await call.answer(texts.tr(user.language, "This section is for clients only.", "?????? ????????? ???? ?????????."), show_alert=True)
+        await call.answer(texts.tr(user.language, "This section is for clients only.", "Цей розділ тільки для замовників."), show_alert=True)
         return
 
     try:
         order_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer(texts.tr(user.language, "Invalid number.", "??????????? ?????."), show_alert=True)
+        await call.answer(texts.tr(user.language, "Invalid number.", "Некоректне число."), show_alert=True)
         return
 
     order = await get_order_for_client(order_id, user.id)
     if not order or order.get('status') != 'open' or order.get('editor_id'):
-        await call.answer(texts.tr(user.language, "Order cannot be edited.", "?????????? ?? ????? ??????????."), show_alert=True)
+        await call.answer(texts.tr(user.language, "Order cannot be edited.", "Замовлення не можна редагувати."), show_alert=True)
         return
 
+    structured = _parse_structured_description(order.get("description") or "")
     await state.clear()
     await state.set_state(EditOrder.waiting_title)
-    await state.update_data(order_id=order_id)
+    await state.update_data(
+        order_id=order_id,
+        title=order.get("title") or "",
+        category=structured.get("category") or "",
+        platform=structured.get("platform") or "",
+        task_details=structured.get("task_details") or "",
+        materials=structured.get("materials") or "",
+        reference_url=structured.get("reference_url") or "",
+        budget_minor=int(order.get("budget_minor") or 0),
+        revision_price_minor=int(order.get("revision_price_minor") or 0),
+    )
     await call.answer()
     await send_clean_from_call(
         call,
         state,
-        texts.tr(user.language, f"Enter new order title (current: {order.get('title') or '-'})", f"??????? ???? ????? ?????????? (???????: {order.get('title') or '-'})"),
+        texts.tr(
+            user.language,
+            f"Step 1/8. Enter new title (current: {order.get('title') or '-'})",
+            f"Крок 1/8. Введіть нову назву (поточна: {order.get('title') or '-'})",
+        ),
         reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
     )
 
@@ -549,7 +935,7 @@ async def order_edit_title(message: Message, state: FSMContext):
         return
     if user.role != "client":
         await state.clear()
-        await message.answer(_t(user, "Only clients can create orders.", "????????? ?????????? ???????? ???? ?????????."))
+        await message.answer(_t(user, "Only clients can create orders.", "Тільки клієнти можуть створювати замовлення."))
         return
 
     title = (message.text or "").strip()
@@ -558,28 +944,63 @@ async def order_edit_title(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            _t(user, "Title cannot be empty.", "????? ?? ??????? ???? ?????????."),
+            _t(user, "Title cannot be empty.", "Назва не може бути порожньою."),
             reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
         )
         return
 
     await state.update_data(title=title)
-    await state.set_state(EditOrder.waiting_description)
+    await state.set_state(EditOrder.waiting_category)
+    data = await state.get_data()
     await send_clean(
         message,
         state,
-        _t(user, "Describe the task and requirements (you can include a link):", "??????? ?????? ? ?????? (????? ? ??????????):"),
-        reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 2/8. Choose video category:', 'Крок 2/8. Оберіть категорію відео:')}",
+        reply_markup=kb_order_category_edit(user.language),
     )
 
-@router.message(EditOrder.waiting_description)
-async def order_edit_description(message: Message, state: FSMContext):
+@router.callback_query(F.data.startswith("order:edit:category:"))
+async def order_edit_category_choose(call: CallbackQuery, state: FSMContext):
+    user = await get_user_by_telegram_id(call.from_user.id)
+    if not user:
+        await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
+        return
+    await state.update_data(category=call.data.split(":")[-1])
+    await state.set_state(EditOrder.waiting_platform)
+    data = await state.get_data()
+    await call.answer()
+    await send_clean_from_call(
+        call,
+        state,
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 3/8. Choose target platform:', 'Крок 3/8. Оберіть платформу публікації:')}",
+        reply_markup=kb_order_platform_edit(user.language),
+    )
+
+@router.callback_query(F.data.startswith("order:edit:platform:"))
+async def order_edit_platform_choose(call: CallbackQuery, state: FSMContext):
+    user = await get_user_by_telegram_id(call.from_user.id)
+    if not user:
+        await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
+        return
+    await state.update_data(platform=call.data.split(":")[-1])
+    await state.set_state(EditOrder.waiting_task_details)
+    data = await state.get_data()
+    await call.answer()
+    await send_clean_from_call(
+        call,
+        state,
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 4/8. Describe exactly what should be done (structure, style, important moments).', 'Крок 4/8. Опишіть, що саме треба зробити (структура, стиль, важливі моменти).')}",
+        reply_markup=kb_nav_menu_help(back="order_edit:back:platform", lang=user.language),
+    )
+
+@router.message(EditOrder.waiting_task_details)
+async def order_edit_task_details(message: Message, state: FSMContext):
     user = await get_user_by_telegram_id(message.from_user.id)
     if not user:
         return
     if user.role != "client":
         await state.clear()
-        await message.answer(_t(user, "Only clients can create orders.", "????????? ?????????? ???????? ???? ?????????."))
+        await message.answer(_t(user, "Only clients can create orders.", "Тільки клієнти можуть створювати замовлення."))
         return
 
     description = (message.text or "").strip()
@@ -588,18 +1009,102 @@ async def order_edit_description(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            _t(user, "Description cannot be empty.", "???? ?? ??????? ???? ????????."),
-            reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
+            _t(user, "Task details cannot be empty.", "Опис завдання не може бути порожнім."),
+            reply_markup=kb_nav_menu_help(back="order_edit:back:platform", lang=user.language),
         )
         return
 
-    await state.update_data(description=description)
-    await state.set_state(EditOrder.waiting_budget)
+    await state.update_data(task_details=description)
+    await state.set_state(EditOrder.waiting_materials)
+    data = await state.get_data()
     await send_clean(
         message,
         state,
-        _t(user, "Enter budget in USD (number). Example: 50", "??????? ?????? ? ??????? (?????). ?????????: 50"),
-        reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 5/8. What source materials do you have? (raw footage, script, music, subtitles, etc.)', 'Крок 5/8. Які матеріали у вас вже є? (сирі файли, сценарій, музика, субтитри тощо)')}",
+        reply_markup=kb_nav_menu_help(back="order_edit:back:task_details", lang=user.language),
+    )
+
+@router.message(EditOrder.waiting_materials)
+async def order_edit_materials(message: Message, state: FSMContext):
+    user = await get_user_by_telegram_id(message.from_user.id)
+    if not user:
+        return
+    if user.role != "client":
+        await state.clear()
+        await message.answer(_t(user, "Only clients can create orders.", "Тільки клієнти можуть створювати замовлення."))
+        return
+
+    raw = (message.text or "").strip()
+    await safe_delete_message(message)
+    if not raw:
+        await send_clean(
+            message,
+            state,
+            _t(user, "Please describe available materials.", "Будь ласка, опишіть доступні матеріали."),
+            reply_markup=kb_nav_menu_help(back="order_edit:back:task_details", lang=user.language),
+        )
+        return
+
+    await state.update_data(materials=raw)
+    await state.set_state(EditOrder.waiting_reference_url)
+    data = await state.get_data()
+    await send_clean(
+        message,
+        state,
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 6/8. Paste a YouTube link as a reference (example style). You can skip this step.', 'Крок 6/8. Вставте YouTube-посилання на приклад монтажу. Цей крок можна пропустити.')}",
+        reply_markup=kb_order_reference_controls_edit(user.language),
+    )
+
+@router.callback_query(F.data == "order:edit:reference:skip")
+async def order_edit_reference_skip(call: CallbackQuery, state: FSMContext):
+    user = await get_user_by_telegram_id(call.from_user.id)
+    if not user:
+        await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
+        return
+    await state.update_data(reference_url="")
+    await state.set_state(EditOrder.waiting_budget)
+    data = await state.get_data()
+    await call.answer()
+    await send_clean_from_call(
+        call,
+        state,
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 7/8. Enter budget in USD. Example: 50', 'Крок 7/8. Введіть бюджет у USD. Приклад: 50')}",
+        reply_markup=kb_nav_menu_help(back="order_edit:back:reference", lang=user.language),
+    )
+
+@router.message(EditOrder.waiting_reference_url)
+async def order_edit_reference_url(message: Message, state: FSMContext):
+    user = await get_user_by_telegram_id(message.from_user.id)
+    if not user:
+        return
+    if user.role != "client":
+        await state.clear()
+        await message.answer(_t(user, "Only clients can create orders.", "Тільки клієнти можуть створювати замовлення."))
+        return
+
+    raw = (message.text or "").strip()
+    await safe_delete_message(message)
+    if not _is_valid_youtube_url(raw):
+        await send_clean(
+            message,
+            state,
+            _t(
+                user,
+                "Please paste a valid YouTube URL (youtube.com or youtu.be), or press Skip.",
+                "Вставте коректне посилання YouTube (youtube.com або youtu.be), або натисніть Пропустити.",
+            ),
+            reply_markup=kb_order_reference_controls_edit(user.language),
+        )
+        return
+
+    await state.update_data(reference_url=raw)
+    await state.set_state(EditOrder.waiting_budget)
+    data = await state.get_data()
+    await send_clean(
+        message,
+        state,
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 7/8. Enter budget in USD. Example: 50', 'Крок 7/8. Введіть бюджет у USD. Приклад: 50')}",
+        reply_markup=kb_nav_menu_help(back="order_edit:back:reference", lang=user.language),
     )
 
 @router.message(EditOrder.waiting_budget)
@@ -609,7 +1114,7 @@ async def order_edit_budget(message: Message, state: FSMContext):
         return
     if user.role != "client":
         await state.clear()
-        await message.answer(_t(user, "Only clients can create orders.", "????????? ?????????? ???????? ???? ?????????."))
+        await message.answer(_t(user, "Only clients can create orders.", "Тільки клієнти можуть створювати замовлення."))
         return
 
     raw = (message.text or "").strip()
@@ -618,18 +1123,19 @@ async def order_edit_budget(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            _t(user, "Budget must be a number. Example: 50", "?????? ??? ???? ??????. ?????????: 50"),
-            reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
+            _t(user, "Budget must be a number. Example: 50", "Бюджет має бути числом. Приклад: 50"),
+            reply_markup=kb_nav_menu_help(back="order_edit:back:reference", lang=user.language),
         )
         return
 
     await state.update_data(budget_minor=int(raw) * 100)
     await state.set_state(EditOrder.waiting_revision_price)
+    data = await state.get_data()
     await send_clean(
         message,
         state,
-        _t(user, "Enter revision price in USD (number). Example: 10", "??????? ???? ?? ?????? (? ???????, ?????). ?????????: 10"),
-        reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 8/8. Enter revision price in USD. Example: 10', 'Крок 8/8. Введіть ціну правки у USD. Приклад: 10')}",
+        reply_markup=kb_nav_menu_help(back="order_edit:back:budget", lang=user.language),
     )
 
 @router.message(EditOrder.waiting_revision_price)
@@ -639,7 +1145,7 @@ async def order_edit_revision_price(message: Message, state: FSMContext):
         return
     if user.role != "client":
         await state.clear()
-        await message.answer(_t(user, "Only clients can create orders.", "????????? ?????????? ???????? ???? ?????????."))
+        await message.answer(_t(user, "Only clients can create orders.", "Тільки клієнти можуть створювати замовлення."))
         return
 
     raw = (message.text or "").strip()
@@ -648,18 +1154,20 @@ async def order_edit_revision_price(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            _t(user, "Revision price must be a number. Example: 10", "???? ?? ?????? ??? ???? ??????. ?????????: 10"),
-            reply_markup=kb_nav_menu_help(back="order_edit:cancel", lang=user.language),
+            _t(user, "Revision price must be a number. Example: 10", "Ціна правки має бути числом. Приклад: 10"),
+            reply_markup=kb_nav_menu_help(back="order_edit:back:budget", lang=user.language),
         )
         return
 
     await state.update_data(revision_price_minor=int(raw) * 100)
     await state.set_state(EditOrder.waiting_deadline)
+    data = await state.get_data()
     await send_clean(
         message,
         state,
-        _t(user, "Choose a deadline or type a custom date (YYYY-MM-DD HH:MM).", "??????? ??????? ??? ??????? ???? ???? (????-??-?? ??:??)."),
-        reply_markup=kb_deadline_quick(back="order_edit:cancel", cancel="order_edit:cancel", lang=user.language),
+        f"{_build_order_preview(user.language, data)}\n\n"
+        + _t(user, "Choose a deadline or type a custom date (YYYY-MM-DD HH:MM).", "Оберіть термін або введіть власну дату (РРРР-ММ-ДД ГГ:ХХ)."),
+        reply_markup=kb_deadline_quick(back="order_edit:back:revision_price", cancel="order_edit:cancel", lang=user.language),
     )
 
 @router.message(EditOrder.waiting_deadline)
@@ -669,7 +1177,7 @@ async def order_edit_deadline(message: Message, state: FSMContext):
         return
     if user.role != "client":
         await state.clear()
-        await message.answer(_t(user, "Only clients can create orders.", "????????? ?????????? ???????? ???? ?????????."))
+        await message.answer(_t(user, "Only clients can create orders.", "Тільки клієнти можуть створювати замовлення."))
         return
 
     raw = (message.text or "").strip()
@@ -684,9 +1192,9 @@ async def order_edit_deadline(message: Message, state: FSMContext):
             _t(
                 user,
                 "Deadline must be in YYYY-MM-DD HH:MM format. Example: 2026-03-15 18:30",
-                "??????? ??? ???? ? ??????? ????-??-?? ??:??. ?????????: 2026-03-15 18:30",
+                "Термін має бути у форматі РРРР-ММ-ДД ГГ:ХХ. Приклад: 2026-03-15 18:30",
             ),
-            reply_markup=kb_deadline_quick(back="order_edit:cancel", cancel="order_edit:cancel", lang=user.language),
+            reply_markup=kb_deadline_quick(back="order_edit:back:revision_price", cancel="order_edit:cancel", lang=user.language),
         )
         return
 
@@ -696,26 +1204,26 @@ async def order_edit_deadline(message: Message, state: FSMContext):
 async def order_details_for_editor(call: CallbackQuery):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer(_tl(None, "Type /start", "????????? /start"), show_alert=True)
+        await call.answer(_tl(None, "Type /start", "Напишіть /start"), show_alert=True)
         return
     if user.role != "editor":
-        await call.answer(_t(user, "Editors only.", "???????? ???? ??????????."), show_alert=True)
+        await call.answer(_t(user, "Editors only.", "Тільки для монтажерів."), show_alert=True)
         return
 
     p = await get_editor_profile(user.id)
     if not p or p.get("verification_status") != "verified":
-        await call.answer(_t(user, "? Please verify first.", "? ???????? ???????? ???????????."), show_alert=True)
+        await call.answer(_t(user, "⛔ Please verify first.", "⛔ Спочатку пройдіть верифікацію."), show_alert=True)
         return
 
     try:
         order_id = int(call.data.split(":")[-1])
     except ValueError:
-        await call.answer(_t(user, "Invalid number.", "??????????? ?????."), show_alert=True)
+        await call.answer(_t(user, "Invalid number.", "Некоректне число."), show_alert=True)
         return
 
     order = await get_order_by_id(order_id)
     if not order or order.get('status') != 'open' or order.get('editor_id'):
-        await call.answer(_t(user, "Order not available.", "?????????? ??????????."), show_alert=True)
+        await call.answer(_t(user, "Order not available.", "Замовлення недоступне."), show_alert=True)
         return
 
     price = f"{int(order.get('budget_minor') or 0) / 100:.2f} {order.get('currency') or 'USD'}"
@@ -731,13 +1239,13 @@ async def order_details_for_editor(call: CallbackQuery):
         description = description[:1497] + '...'
 
     text = (
-        f"{_t(user, 'Order', '??????????')} #{order['id']}\n\n"
-        f"{_t(user, 'Title', '?????')}: {title}\n"
-        f"{_t(user, 'Description', '????')}: {description}\n"
-        f"{_t(user, 'Budget', '??????')}: {price}\n"
-        f"{_t(user, 'Revision price', '???? ?? ??????')}: {revision_price}\n"
-        f"{_t(user, 'Created', '????????')}: {created_label}\n"
-        f"{_t(user, 'Deadline', '???????')}: {deadline_label}"
+        f"{_t(user, 'Order', 'Замовлення')} #{order['id']}\n\n"
+        f"{_t(user, 'Title', 'Назва')}: {title}\n"
+        f"{_t(user, 'Description', 'Опис')}: {description}\n"
+        f"{_t(user, 'Budget', 'Бюджет')}: {price}\n"
+        f"{_t(user, 'Revision price', 'Ціна за правки')}: {revision_price}\n"
+        f"{_t(user, 'Created', 'Створено')}: {created_label}\n"
+        f"{_t(user, 'Deadline', 'Термін')}: {deadline_label}"
     )
 
     await call.message.answer(text, reply_markup=kb_editor_order_detail(order_id, user.language))
@@ -748,15 +1256,15 @@ async def order_details_for_editor(call: CallbackQuery):
 async def order_chat_request(call: CallbackQuery, state: FSMContext):
     user = await get_user_by_telegram_id(call.from_user.id)
     if not user:
-        await call.answer(_tl(None, "Type /start", "????????? /start"), show_alert=True)
+        await call.answer(_tl(None, "Type /start", "Напишіть /start"), show_alert=True)
         return
     if user.role != "editor":
-        await call.answer(_t(user, "Editors only.", "???????? ???? ??????????."), show_alert=True)
+        await call.answer(_t(user, "Editors only.", "Тільки для монтажерів."), show_alert=True)
         return
 
     p = await get_editor_profile(user.id)
     if not p or p.get("verification_status") != "verified":
-        await call.answer(_t(user, "? Please verify first.", "? ???????? ???????? ???????????."), show_alert=True)
+        await call.answer(_t(user, "⛔ Please verify first.", "⛔ Спочатку пройдіть верифікацію."), show_alert=True)
         return
 
     try:

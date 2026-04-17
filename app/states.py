@@ -25,7 +25,11 @@ class EditClient(StatesGroup):
 
 class CreateOrder(StatesGroup):
     waiting_title = State()
-    waiting_description = State()
+    waiting_category = State()
+    waiting_platform = State()
+    waiting_task_details = State()
+    waiting_materials = State()
+    waiting_reference_url = State()
     waiting_budget = State()
     waiting_revision_price = State()
     waiting_deadline_mode = State()
@@ -36,7 +40,11 @@ class DealChange(StatesGroup):
 
 class EditOrder(StatesGroup):
     waiting_title = State()
-    waiting_description = State()
+    waiting_category = State()
+    waiting_platform = State()
+    waiting_task_details = State()
+    waiting_materials = State()
+    waiting_reference_url = State()
     waiting_budget = State()
     waiting_revision_price = State()
     waiting_deadline = State()

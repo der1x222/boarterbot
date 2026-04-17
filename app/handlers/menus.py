@@ -49,18 +49,37 @@ async def clear_last_bot_message(state: FSMContext, bot, chat_id: int):
     await state.update_data(last_bot_message_id=None)
 
 async def send_clean_from_call(call: CallbackQuery, state: FSMContext, text: str, reply_markup=None):
-    chat_id = call.message.chat.id
-    await clear_last_bot_message(state, call.bot, chat_id)
+    # Prefer editing the existing bot message to keep chat history clean.
     try:
-        await safe_delete_message(call.message)
+        await call.message.edit_text(text, reply_markup=reply_markup)
+        await set_last_bot_message(state, call.message.message_id)
+        return call.message
     except:
         pass
+
+    chat_id = call.message.chat.id
+    await clear_last_bot_message(state, call.bot, chat_id)
     msg = await call.message.answer(text, reply_markup=reply_markup)
     await set_last_bot_message(state, msg.message_id)
     return msg
 
+async def send_clean_from_message(
+    message: Message,
+    state: FSMContext,
+    text: str,
+    reply_markup=None,
+    delete_user_message: bool = True,
+):
+    chat_id = message.chat.id
+    await clear_last_bot_message(state, message.bot, chat_id)
+    if delete_user_message:
+        await safe_delete_message(message)
+    msg = await message.answer(text, reply_markup=reply_markup)
+    await set_last_bot_message(state, msg.message_id)
+    return msg
+
 @router.callback_query(
-    F.data.startswith(("client:", "editor:", "common:")) &
+    F.data.startswith(("client:", "editor:", "common:", "balance:")) &
     ~F.data.in_(["client:profile", "editor:profile", "client:create_order", "client:my_orders", "common:settings"])
 )
 async def cb_menu(call: CallbackQuery, state: FSMContext):
@@ -366,21 +385,31 @@ async def balance_withdraw_amount(message: Message, state: FSMContext):
             raise ValueError()
         amount_minor = int(amount * 100)
     except ValueError:
-        await message.answer(texts.tr(user.language, "Please enter a valid amount.", "Будь ласка, введіть коректну суму."))
+        await send_clean_from_message(
+            message,
+            state,
+            texts.tr(user.language, "Please enter a valid amount.", "Будь ласка, введіть коректну суму."),
+        )
         return
 
     balance_data = await get_user_balance(user.id)
     if amount_minor > balance_data["virtual_balance_minor"]:
-        await message.answer(texts.tr(user.language, "Insufficient balance.", "Недостатньо коштів."))
+        await send_clean_from_message(
+            message,
+            state,
+            texts.tr(user.language, "Insufficient balance.", "Недостатньо коштів."),
+        )
         await state.clear()
         return
 
     await state.update_data(withdraw_amount_minor=amount_minor)
     await state.set_state(BalanceWithdraw.waiting_description)
 
-    await message.answer(
+    await send_clean_from_message(
+        message,
+        state,
         texts.tr(user.language, "Enter description/payment details for withdrawal:", "Введіть опис/платіжні дані для виводу:"),
-        reply_markup=None
+        reply_markup=None,
     )
 
 @router.message(BalanceWithdraw.waiting_description)
@@ -392,7 +421,11 @@ async def balance_withdraw_description(message: Message, state: FSMContext):
 
     description = (message.text or "").strip()
     if not description:
-        await message.answer(texts.tr(user.language, "Please enter description.", "Будь ласка, введіть опис."))
+        await send_clean_from_message(
+            message,
+            state,
+            texts.tr(user.language, "Please enter description.", "Будь ласка, введіть опис."),
+        )
         return
 
     data = await state.get_data()
@@ -400,14 +433,22 @@ async def balance_withdraw_description(message: Message, state: FSMContext):
 
     if not amount_minor:
         await state.clear()
-        await message.answer(texts.tr(user.language, "Session expired. Please try again.", "Сесія закінчилася. Спробуйте ще раз."))
+        await send_clean_from_message(
+            message,
+            state,
+            texts.tr(user.language, "Session expired. Please try again.", "Сесія закінчилася. Спробуйте ще раз."),
+        )
         return
 
     # Process withdrawal
     ok = await withdraw_balance(user.id, amount_minor, description)
     if not ok:
         await state.clear()
-        await message.answer(texts.tr(user.language, "Withdrawal failed.", "Вивід коштів не вдалося."))
+        await send_clean_from_message(
+            message,
+            state,
+            texts.tr(user.language, "Withdrawal failed.", "Вивід коштів не вдалося."),
+        )
         return
 
     # Notify moderators
@@ -419,7 +460,9 @@ async def balance_withdraw_description(message: Message, state: FSMContext):
         )
 
     await state.clear()
-    await message.answer(
+    await send_clean_from_message(
+        message,
+        state,
         texts.tr(user.language, "✅ Withdrawal request submitted. Moderators will process it.", "✅ Запит на вивід коштів подано. Модератори оброблять його."),
-        reply_markup=await get_menu_markup_for_user(user)
+        reply_markup=await get_menu_markup_for_user(user),
     )

@@ -570,3 +570,67 @@ def kb_verify_chat_controls() -> InlineKeyboardMarkup:
     b.button(text="🚪 Выйти", callback_data="verify:chat:exit")
     b.adjust(1)
     return b.as_markup()
+
+def kb_order_category(lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text=_tr(lang, "🎯 Ad / promo", "🎯 Реклама / промо"), callback_data="order:create:category:ad")
+    b.button(text=_tr(lang, "🎬 YouTube video", "🎬 YouTube-відео"), callback_data="order:create:category:youtube")
+    b.button(text=_tr(lang, "🎥 Interview / podcast", "🎥 Інтерв'ю / подкаст"), callback_data="order:create:category:podcast")
+    b.button(text=_tr(lang, "📱 Shorts / Reels / TikTok", "📱 Shorts / Reels / TikTok"), callback_data="order:create:category:shorts")
+    b.button(text=_tr(lang, "🧩 Other", "🧩 Інше"), callback_data="order:create:category:other")
+    b.button(text=_tr(lang, "⬅️ Back", "⬅️ Назад"), callback_data="order:back:title")
+    b.button(text=_tr(lang, "❌ Cancel", "❌ Скасувати"), callback_data="order:cancel")
+    b.adjust(1, 1, 1, 1, 1, 2)
+    return b.as_markup()
+
+def kb_order_platform(lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text="YouTube", callback_data="order:create:platform:youtube")
+    b.button(text="Instagram", callback_data="order:create:platform:instagram")
+    b.button(text="TikTok", callback_data="order:create:platform:tiktok")
+    b.button(text="Facebook", callback_data="order:create:platform:facebook")
+    b.button(text=_tr(lang, "Other", "Інше"), callback_data="order:create:platform:other")
+    b.button(text=_tr(lang, "⬅️ Back", "⬅️ Назад"), callback_data="order:back:category")
+    b.button(text=_tr(lang, "❌ Cancel", "❌ Скасувати"), callback_data="order:cancel")
+    b.adjust(2, 2, 1, 2)
+    return b.as_markup()
+
+def kb_order_reference_controls(lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text=_tr(lang, "⏭️ Skip reference", "⏭️ Пропустити референс"), callback_data="order:create:reference:skip")
+    b.button(text=_tr(lang, "⬅️ Back", "⬅️ Назад"), callback_data="order:back:materials")
+    b.button(text=_tr(lang, "❌ Cancel", "❌ Скасувати"), callback_data="order:cancel")
+    b.adjust(1, 2)
+    return b.as_markup()
+
+def kb_order_category_edit(lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text=_tr(lang, "🎯 Ad / promo", "🎯 Реклама / промо"), callback_data="order:edit:category:ad")
+    b.button(text=_tr(lang, "🎬 YouTube video", "🎬 YouTube-відео"), callback_data="order:edit:category:youtube")
+    b.button(text=_tr(lang, "🎥 Interview / podcast", "🎥 Інтерв'ю / подкаст"), callback_data="order:edit:category:podcast")
+    b.button(text=_tr(lang, "📱 Shorts / Reels / TikTok", "📱 Shorts / Reels / TikTok"), callback_data="order:edit:category:shorts")
+    b.button(text=_tr(lang, "🧩 Other", "🧩 Інше"), callback_data="order:edit:category:other")
+    b.button(text=_tr(lang, "⬅️ Back", "⬅️ Назад"), callback_data="order_edit:back:title")
+    b.button(text=_tr(lang, "❌ Cancel", "❌ Скасувати"), callback_data="order_edit:cancel")
+    b.adjust(1, 1, 1, 1, 1, 2)
+    return b.as_markup()
+
+def kb_order_platform_edit(lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text="YouTube", callback_data="order:edit:platform:youtube")
+    b.button(text="Instagram", callback_data="order:edit:platform:instagram")
+    b.button(text="TikTok", callback_data="order:edit:platform:tiktok")
+    b.button(text="Facebook", callback_data="order:edit:platform:facebook")
+    b.button(text=_tr(lang, "Other", "Інше"), callback_data="order:edit:platform:other")
+    b.button(text=_tr(lang, "⬅️ Back", "⬅️ Назад"), callback_data="order_edit:back:category")
+    b.button(text=_tr(lang, "❌ Cancel", "❌ Скасувати"), callback_data="order_edit:cancel")
+    b.adjust(2, 2, 1, 2)
+    return b.as_markup()
+
+def kb_order_reference_controls_edit(lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text=_tr(lang, "⏭️ Skip reference", "⏭️ Пропустити референс"), callback_data="order:edit:reference:skip")
+    b.button(text=_tr(lang, "⬅️ Back", "⬅️ Назад"), callback_data="order_edit:back:materials")
+    b.button(text=_tr(lang, "❌ Cancel", "❌ Скасувати"), callback_data="order_edit:cancel")
+    b.adjust(1, 2)
+    return b.as_markup()
