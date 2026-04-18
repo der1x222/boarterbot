@@ -603,6 +603,21 @@ def kb_order_reference_controls(lang: str | None = None) -> InlineKeyboardMarkup
     b.adjust(1, 2)
     return b.as_markup()
 
+def kb_order_create_form(lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text=_tr(lang, "📝 Title", "📝 Назва"), callback_data="order:back:title")
+    b.button(text=_tr(lang, "🎯 Category", "🎯 Категорія"), callback_data="order:back:category")
+    b.button(text=_tr(lang, "📱 Platform", "📱 Платформа"), callback_data="order:back:platform")
+    b.button(text=_tr(lang, "📋 Task details", "📋 Деталі завдання"), callback_data="order:back:task_details")
+    b.button(text=_tr(lang, "📂 Materials", "📂 Матеріали"), callback_data="order:back:materials")
+    b.button(text=_tr(lang, "🔗 Reference", "🔗 Референс"), callback_data="order:back:reference")
+    b.button(text=_tr(lang, "💵 Budget", "💵 Бюджет"), callback_data="order:back:budget")
+    b.button(text=_tr(lang, "✏️ Revision price", "✏️ Ціна правки"), callback_data="order:back:revision_price")
+    b.button(text=_tr(lang, "⬅️ Menu", "⬅️ Меню"), callback_data="order:back:menu")
+    b.button(text=_tr(lang, "❌ Cancel", "❌ Скасувати"), callback_data="order:cancel")
+    b.adjust(2, 2, 2, 2, 2)
+    return b.as_markup()
+
 def kb_order_category_edit(lang: str | None = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.button(text=_tr(lang, "🎯 Ad / promo", "🎯 Реклама / промо"), callback_data="order:edit:category:ad")

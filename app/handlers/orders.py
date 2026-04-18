@@ -7,7 +7,7 @@ import re
 from urllib.parse import urlparse
 
 from app.models import get_user_by_telegram_id, get_user_by_id, list_moderators
-from app.keyboards import kb_nav_menu_help, kb_orders_list, kb_order_detail, kb_deal_menu, kb_mod_deal_menu, kb_editor_order_detail, kb_deal_chat_controls, kb_dispute_join, kb_dispute_controls, kb_deal_chat_menu, kb_proposal_actions, kb_deal_chat_link_controls, kb_deadline_quick, kb_revision_request_menu, kb_revision_response_menu, kb_order_completion_menu, kb_client_completion_menu, kb_order_category, kb_order_platform, kb_order_reference_controls, kb_order_category_edit, kb_order_platform_edit, kb_order_reference_controls_edit
+from app.keyboards import kb_nav_menu_help, kb_orders_list, kb_order_detail, kb_deal_menu, kb_mod_deal_menu, kb_editor_order_detail, kb_deal_chat_controls, kb_dispute_join, kb_dispute_controls, kb_deal_chat_menu, kb_proposal_actions, kb_deal_chat_link_controls, kb_deadline_quick, kb_revision_request_menu, kb_revision_response_menu, kb_order_completion_menu, kb_client_completion_menu, kb_order_category, kb_order_platform, kb_order_reference_controls, kb_order_category_edit, kb_order_platform_edit, kb_order_reference_controls_edit, kb_order_create_form
 from app.menu_utils import get_menu_markup_for_user
 from app.states import CreateOrder, DealChange, EditOrder, EditorProposal, DealChat, DisputeChat, DisputeOpenReason, ChatRequest, RevisionRequest, RevisionCounter
 from app.order_repo import create_order, list_orders_for_client, get_order_for_client, accept_order, get_order_by_id, update_order_if_open, open_dispute, set_dispute_agree, close_dispute, set_payment_link, create_deal_message, get_deal_messages, request_revision, respond_to_revision, set_revision_payment_link, mark_revision_paid, mark_final_video_sent, confirm_order_completion, complete_order_and_credit_editor
@@ -95,6 +95,40 @@ def _is_valid_youtube_url(raw: str) -> bool:
         return False
     host = (parsed.netloc or "").lower()
     return host.endswith("youtube.com") or host == "youtu.be" or host.endswith(".youtu.be")
+
+def _extract_urls(raw: str) -> list[str]:
+    return re.findall(r"https?://[^\s]+", raw or "", flags=re.IGNORECASE)
+
+def _is_allowed_material_host(host: str) -> bool:
+    clean_host = (host or "").lower().lstrip("www.")
+    allowed_hosts = (
+        "drive.google.com",
+        "docs.google.com",
+        "dropbox.com",
+        "onedrive.live.com",
+        "1drv.ms",
+        "mega.nz",
+        "wetransfer.com",
+        "we.tl",
+        "mediafire.com",
+        "pixeldrain.com",
+    )
+    return any(clean_host == h or clean_host.endswith(f".{h}") for h in allowed_hosts)
+
+def _has_only_allowed_material_links(raw: str) -> bool:
+    urls = _extract_urls(raw)
+    if not urls:
+        return True
+    for url in urls:
+        try:
+            parsed = urlparse(url.strip())
+        except Exception:
+            return False
+        if parsed.scheme not in {"http", "https"}:
+            return False
+        if not _is_allowed_material_host(parsed.netloc):
+            return False
+    return True
 
 def _build_order_description(data: dict, lang: str | None) -> str:
     task_details = (data.get("task_details") or "").strip()
@@ -234,16 +268,28 @@ async def create_order_start(call: CallbackQuery, state: FSMContext):
 
     await state.clear()
     await state.set_state(CreateOrder.waiting_title)
+    await state.update_data(
+        title="",
+        category="",
+        platform="",
+        task_details="",
+        materials="",
+        reference_url="",
+        budget_minor=0,
+        revision_price_minor=0,
+    )
+    data = await state.get_data()
     await call.answer()
     await send_clean_from_call(
         call,
         state,
-        texts.tr(
+        f"{_build_order_preview(user.language, data)}\n\n"
+        + texts.tr(
             user.language,
-            "Step 1/8. Enter a short order title.",
-            "Крок 1/8. Введіть коротку назву замовлення.",
+            "Tap a button to fill a field. Start with title.",
+            "Натисніть кнопку, щоб заповнити поле. Почніть з назви.",
         ),
-        reply_markup=kb_nav_menu_help(back="order:back:menu", lang=user.language),
+        reply_markup=kb_order_create_form(user.language),
     )
 
 @router.callback_query(F.data.startswith("order:back:"))
@@ -326,8 +372,8 @@ async def create_order_back(call: CallbackQuery, state: FSMContext):
             state,
             texts.tr(
                 user.language,
-                "Step 5/8. What source materials do you have? (raw footage, script, music, subtitles, etc.)",
-                "Крок 5/8. Які матеріали у вас вже є? (сирі файли, сценарій, музика, субтитри тощо)",
+                "Step 5/8. Paste links to source materials (Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, PixelDrain).",
+                "Крок 5/8. Вставте посилання на матеріали (Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, PixelDrain).",
             ),
             reply_markup=kb_nav_menu_help(back="order:back:task_details", lang=user.language),
         )
@@ -478,7 +524,7 @@ async def create_order_task_details(message: Message, state: FSMContext):
     await send_clean(
         message,
         state,
-        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 5/8. What source materials do you have? (raw footage, script, music, subtitles, etc.)', 'Крок 5/8. Які матеріали у вас вже є? (сирі файли, сценарій, музика, субтитри тощо)')}",
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 5/8. Paste links to source materials (Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, PixelDrain).', 'Крок 5/8. Вставте посилання на матеріали (Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, PixelDrain).')}",
         reply_markup=kb_nav_menu_help(back="order:back:task_details", lang=user.language),
     )
 
@@ -499,7 +545,20 @@ async def create_order_materials(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            texts.tr(user.language, "Please describe available materials.", "Будь ласка, опишіть доступні матеріали."),
+            texts.tr(user.language, "Please paste material links.", "Будь ласка, вставте посилання на матеріали."),
+            reply_markup=kb_nav_menu_help(back="order:back:task_details", lang=user.language),
+        )
+        return
+
+    if not _has_only_allowed_material_links(raw):
+        await send_clean(
+            message,
+            state,
+            texts.tr(
+                user.language,
+                "Only Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, and PixelDrain links are allowed for materials.",
+                "Для матеріалів дозволені лише посилання Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire та PixelDrain.",
+            ),
             reply_markup=kb_nav_menu_help(back="order:back:task_details", lang=user.language),
         )
         return
@@ -849,7 +908,7 @@ async def order_edit_back(call: CallbackQuery, state: FSMContext):
         await send_clean_from_call(
             call,
             state,
-            f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 5/8. What source materials do you have? (raw footage, script, music, subtitles, etc.)', 'Крок 5/8. Які матеріали у вас вже є? (сирі файли, сценарій, музика, субтитри тощо)')}",
+            f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 5/8. Paste links to source materials (Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, PixelDrain).', 'Крок 5/8. Вставте посилання на матеріали (Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, PixelDrain).')}",
             reply_markup=kb_nav_menu_help(back="order_edit:back:task_details", lang=user.language),
         )
         return
@@ -1020,7 +1079,7 @@ async def order_edit_task_details(message: Message, state: FSMContext):
     await send_clean(
         message,
         state,
-        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 5/8. What source materials do you have? (raw footage, script, music, subtitles, etc.)', 'Крок 5/8. Які матеріали у вас вже є? (сирі файли, сценарій, музика, субтитри тощо)')}",
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 5/8. Paste links to source materials (Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, PixelDrain).', 'Крок 5/8. Вставте посилання на матеріали (Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, PixelDrain).')}",
         reply_markup=kb_nav_menu_help(back="order_edit:back:task_details", lang=user.language),
     )
 
@@ -1040,7 +1099,20 @@ async def order_edit_materials(message: Message, state: FSMContext):
         await send_clean(
             message,
             state,
-            _t(user, "Please describe available materials.", "Будь ласка, опишіть доступні матеріали."),
+            _t(user, "Please paste material links.", "Будь ласка, вставте посилання на матеріали."),
+            reply_markup=kb_nav_menu_help(back="order_edit:back:task_details", lang=user.language),
+        )
+        return
+
+    if not _has_only_allowed_material_links(raw):
+        await send_clean(
+            message,
+            state,
+            _t(
+                user,
+                "Only Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, and PixelDrain links are allowed for materials.",
+                "Для матеріалів дозволені лише посилання Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire та PixelDrain.",
+            ),
             reply_markup=kb_nav_menu_help(back="order_edit:back:task_details", lang=user.language),
         )
         return
