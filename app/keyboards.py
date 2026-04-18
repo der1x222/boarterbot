@@ -125,7 +125,7 @@ def kb_editor_menu(is_verified: bool, lang: str | None = None) -> InlineKeyboard
     lng = texts.normalize_lang(lang)
     b.button(text=_tr(lng, "👤 Profile", "👤 Профіль"), callback_data="editor:profile")
     if is_verified:
-        b.button(text=_tr(lng, "⬅️ Orders list", "⬅️ До списку"), callback_data="editor:find_orders")
+        b.button(text=_tr(lng, "📋 Orders", "📋 Замовлення"), callback_data="editor:orders")
     else:
         b.button(text=_tr(lng, "✅ Verify", "✅ Верифікація"), callback_data="verify:start")
     b.button(text=_tr(lng, "📬 My proposals", "📬 Мої відгуки"), callback_data="editor:my_proposals")
@@ -336,7 +336,7 @@ def kb_editor_order_detail(order_id: int) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.button(text="💬 Начать чат", callback_data=f"order:chat:{order_id}")
     b.button(text="💰 Предложить цену", callback_data=f"order:proposal:{order_id}")
-    b.button(text="⬅️ К списку", callback_data="editor:find_orders")
+    b.button(text="📋 Замовлення", callback_data="editor:orders")
     b.button(text="🏠 Меню", callback_data="common:menu")
     b.button(text="🆘 Поддержка", callback_data="common:support")
     b.adjust(2, 1, 2)

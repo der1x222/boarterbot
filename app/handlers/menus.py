@@ -164,7 +164,7 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
             "After the work is completed and approved, funds are released to the editor, and both sides leave a review.",
             reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
         )
-    elif call.data == "editor:find_orders":
+    elif call.data in {"editor:find_orders", "editor:orders"}:
         p = await get_editor_profile(user.id)
         if not p or p.get("verification_status") != "verified":
             await call.answer(texts.tr(user.language, "⛔ Please verify first.", "⛔ Спочатку пройдіть верифікацію."), show_alert=True)
