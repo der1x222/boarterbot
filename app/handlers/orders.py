@@ -7,7 +7,7 @@ import re
 from urllib.parse import urlparse
 
 from app.models import get_user_by_telegram_id, get_user_by_id, list_moderators
-from app.keyboards import kb_nav_menu_help, kb_orders_list, kb_order_detail, kb_deal_menu, kb_mod_deal_menu, kb_editor_order_detail, kb_deal_chat_controls, kb_dispute_join, kb_dispute_controls, kb_deal_chat_menu, kb_proposal_actions, kb_deal_chat_link_controls, kb_deadline_quick, kb_revision_request_menu, kb_revision_response_menu, kb_order_completion_menu, kb_client_completion_menu, kb_order_category, kb_order_platform, kb_order_reference_controls, kb_order_category_edit, kb_order_platform_edit, kb_order_reference_controls_edit, kb_order_create_form
+from app.keyboards import kb_nav_menu_help, kb_orders_list, kb_order_detail, kb_deal_menu, kb_mod_deal_menu, kb_editor_order_detail, kb_deal_chat_controls, kb_dispute_join, kb_dispute_controls, kb_deal_chat_menu, kb_proposal_actions, kb_deal_chat_link_controls, kb_deadline_quick, kb_revision_request_menu, kb_revision_response_menu, kb_order_completion_menu, kb_client_completion_menu, kb_order_category, kb_order_platform, kb_order_reference_controls, kb_order_category_edit, kb_order_platform_edit, kb_order_reference_controls_edit, kb_order_create_form, kb_order_materials_controls, kb_order_materials_controls_edit
 from app.menu_utils import get_menu_markup_for_user
 from app.states import CreateOrder, DealChange, EditOrder, EditorProposal, DealChat, DisputeChat, DisputeOpenReason, ChatRequest, RevisionRequest, RevisionCounter
 from app.order_repo import create_order, list_orders_for_client, get_order_for_client, accept_order, get_order_by_id, update_order_if_open, open_dispute, set_dispute_agree, close_dispute, set_payment_link, create_deal_message, get_deal_messages, request_revision, respond_to_revision, set_revision_payment_link, mark_revision_paid, mark_final_video_sent, confirm_order_completion, complete_order_and_credit_editor
@@ -151,7 +151,11 @@ def _build_order_preview(lang: str | None, data: dict) -> str:
     category = _order_category_label(data.get("category"), lang)
     platform = _order_platform_label(data.get("platform"), lang)
     task_details = (data.get("task_details") or "").strip() or _tl(lang, "Not filled", "Не заповнено")
-    materials = (data.get("materials") or "").strip() or _tl(lang, "Not filled", "Не заповнено")
+    raw_materials = (data.get("materials") or "").strip()
+    if raw_materials == "__skipped__":
+        materials = _tl(lang, "Skipped", "Пропущено")
+    else:
+        materials = raw_materials or _tl(lang, "Not filled", "Не заповнено")
     reference_url = (data.get("reference_url") or "").strip() or _tl(lang, "No reference", "Без референсу")
     return (
         f"{_tl(lang, 'Preview of your order', 'Попередній вигляд вашого оголошення')}\n\n"
@@ -375,7 +379,7 @@ async def create_order_back(call: CallbackQuery, state: FSMContext):
                 "Step 5/8. Paste links to source materials (Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, PixelDrain).",
                 "Крок 5/8. Вставте посилання на матеріали (Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, PixelDrain).",
             ),
-            reply_markup=kb_nav_menu_help(back="order:back:task_details", lang=user.language),
+            reply_markup=kb_order_materials_controls(user.language),
         )
         return
 
@@ -525,7 +529,7 @@ async def create_order_task_details(message: Message, state: FSMContext):
         message,
         state,
         f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 5/8. Paste links to source materials (Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, PixelDrain).', 'Крок 5/8. Вставте посилання на матеріали (Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, PixelDrain).')}",
-        reply_markup=kb_nav_menu_help(back="order:back:task_details", lang=user.language),
+        reply_markup=kb_order_materials_controls(user.language),
     )
 
 @router.message(CreateOrder.waiting_materials)
@@ -546,7 +550,7 @@ async def create_order_materials(message: Message, state: FSMContext):
             message,
             state,
             texts.tr(user.language, "Please paste material links.", "Будь ласка, вставте посилання на матеріали."),
-            reply_markup=kb_nav_menu_help(back="order:back:task_details", lang=user.language),
+            reply_markup=kb_order_materials_controls(user.language),
         )
         return
 
@@ -559,7 +563,7 @@ async def create_order_materials(message: Message, state: FSMContext):
                 "Only Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, and PixelDrain links are allowed for materials.",
                 "Для матеріалів дозволені лише посилання Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire та PixelDrain.",
             ),
-            reply_markup=kb_nav_menu_help(back="order:back:task_details", lang=user.language),
+            reply_markup=kb_order_materials_controls(user.language),
         )
         return
 
@@ -568,6 +572,23 @@ async def create_order_materials(message: Message, state: FSMContext):
     data = await state.get_data()
     await send_clean(
         message,
+        state,
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 6/8. Paste a YouTube link as a reference (example style). You can skip this step.', 'Крок 6/8. Вставте YouTube-посилання на приклад монтажу. Цей крок можна пропустити.')}",
+        reply_markup=kb_order_reference_controls(user.language),
+    )
+
+@router.callback_query(F.data == "order:create:materials:skip")
+async def create_order_materials_skip(call: CallbackQuery, state: FSMContext):
+    user = await get_user_by_telegram_id(call.from_user.id)
+    if not user:
+        await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
+        return
+    await state.update_data(materials="__skipped__")
+    await state.set_state(CreateOrder.waiting_reference_url)
+    data = await state.get_data()
+    await call.answer()
+    await send_clean_from_call(
+        call,
         state,
         f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 6/8. Paste a YouTube link as a reference (example style). You can skip this step.', 'Крок 6/8. Вставте YouTube-посилання на приклад монтажу. Цей крок можна пропустити.')}",
         reply_markup=kb_order_reference_controls(user.language),
@@ -909,7 +930,7 @@ async def order_edit_back(call: CallbackQuery, state: FSMContext):
             call,
             state,
             f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 5/8. Paste links to source materials (Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, PixelDrain).', 'Крок 5/8. Вставте посилання на матеріали (Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, PixelDrain).')}",
-            reply_markup=kb_nav_menu_help(back="order_edit:back:task_details", lang=user.language),
+            reply_markup=kb_order_materials_controls_edit(user.language),
         )
         return
     if action == "reference":
@@ -1080,7 +1101,7 @@ async def order_edit_task_details(message: Message, state: FSMContext):
         message,
         state,
         f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 5/8. Paste links to source materials (Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, PixelDrain).', 'Крок 5/8. Вставте посилання на матеріали (Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, PixelDrain).')}",
-        reply_markup=kb_nav_menu_help(back="order_edit:back:task_details", lang=user.language),
+        reply_markup=kb_order_materials_controls_edit(user.language),
     )
 
 @router.message(EditOrder.waiting_materials)
@@ -1100,7 +1121,7 @@ async def order_edit_materials(message: Message, state: FSMContext):
             message,
             state,
             _t(user, "Please paste material links.", "Будь ласка, вставте посилання на матеріали."),
-            reply_markup=kb_nav_menu_help(back="order_edit:back:task_details", lang=user.language),
+            reply_markup=kb_order_materials_controls_edit(user.language),
         )
         return
 
@@ -1113,7 +1134,7 @@ async def order_edit_materials(message: Message, state: FSMContext):
                 "Only Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire, and PixelDrain links are allowed for materials.",
                 "Для матеріалів дозволені лише посилання Google Drive, Dropbox, OneDrive, Mega, WeTransfer, MediaFire та PixelDrain.",
             ),
-            reply_markup=kb_nav_menu_help(back="order_edit:back:task_details", lang=user.language),
+            reply_markup=kb_order_materials_controls_edit(user.language),
         )
         return
 
@@ -1122,6 +1143,23 @@ async def order_edit_materials(message: Message, state: FSMContext):
     data = await state.get_data()
     await send_clean(
         message,
+        state,
+        f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 6/8. Paste a YouTube link as a reference (example style). You can skip this step.', 'Крок 6/8. Вставте YouTube-посилання на приклад монтажу. Цей крок можна пропустити.')}",
+        reply_markup=kb_order_reference_controls_edit(user.language),
+    )
+
+@router.callback_query(F.data == "order:edit:materials:skip")
+async def order_edit_materials_skip(call: CallbackQuery, state: FSMContext):
+    user = await get_user_by_telegram_id(call.from_user.id)
+    if not user:
+        await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
+        return
+    await state.update_data(materials="__skipped__")
+    await state.set_state(EditOrder.waiting_reference_url)
+    data = await state.get_data()
+    await call.answer()
+    await send_clean_from_call(
+        call,
         state,
         f"{_build_order_preview(user.language, data)}\n\n{_t(user, 'Step 6/8. Paste a YouTube link as a reference (example style). You can skip this step.', 'Крок 6/8. Вставте YouTube-посилання на приклад монтажу. Цей крок можна пропустити.')}",
         reply_markup=kb_order_reference_controls_edit(user.language),

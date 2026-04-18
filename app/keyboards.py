@@ -603,6 +603,14 @@ def kb_order_reference_controls(lang: str | None = None) -> InlineKeyboardMarkup
     b.adjust(1, 2)
     return b.as_markup()
 
+def kb_order_materials_controls(lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text=_tr(lang, "⏭️ Skip materials", "⏭️ Пропустити матеріали"), callback_data="order:create:materials:skip")
+    b.button(text=_tr(lang, "⬅️ Back", "⬅️ Назад"), callback_data="order:back:task_details")
+    b.button(text=_tr(lang, "❌ Cancel", "❌ Скасувати"), callback_data="order:cancel")
+    b.adjust(1, 2)
+    return b.as_markup()
+
 def kb_order_create_form(lang: str | None = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.button(text=_tr(lang, "📝 Title", "📝 Назва"), callback_data="order:back:title")
@@ -646,6 +654,14 @@ def kb_order_reference_controls_edit(lang: str | None = None) -> InlineKeyboardM
     b = InlineKeyboardBuilder()
     b.button(text=_tr(lang, "⏭️ Skip reference", "⏭️ Пропустити референс"), callback_data="order:edit:reference:skip")
     b.button(text=_tr(lang, "⬅️ Back", "⬅️ Назад"), callback_data="order_edit:back:materials")
+    b.button(text=_tr(lang, "❌ Cancel", "❌ Скасувати"), callback_data="order_edit:cancel")
+    b.adjust(1, 2)
+    return b.as_markup()
+
+def kb_order_materials_controls_edit(lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text=_tr(lang, "⏭️ Skip materials", "⏭️ Пропустити матеріали"), callback_data="order:edit:materials:skip")
+    b.button(text=_tr(lang, "⬅️ Back", "⬅️ Назад"), callback_data="order_edit:back:task_details")
     b.button(text=_tr(lang, "❌ Cancel", "❌ Скасувати"), callback_data="order_edit:cancel")
     b.adjust(1, 2)
     return b.as_markup()
