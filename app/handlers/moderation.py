@@ -321,6 +321,29 @@ async def mod_verifications_approve(call: CallbackQuery):
     await _show_pending_verifications(call, offset, user.language)
     await call.answer(_t(user, "✅ Approved.", "✅ Підтверджено."))
 
+@router.callback_query(F.data.startswith("verify:approve:"))
+async def mod_verifications_approve_legacy(call: CallbackQuery):
+    user = await _ensure_moderator(call)
+    if not user:
+        return
+    try:
+        editor_user_id = int(call.data.split(":")[-1])
+    except ValueError:
+        await call.answer(_t(user, "Invalid user ID.", "Некоректний ID користувача."), show_alert=True)
+        return
+
+    await set_editor_verification(editor_user_id, "verified", note="approved by moderator")
+    await log_moderation_action(
+        moderator_user_id=user.id,
+        action_type="verify_approve",
+        target_user_id=editor_user_id,
+        object_type="editor_profile",
+        object_id=editor_user_id,
+        payload={"legacy_callback": True},
+    )
+    await _show_pending_verifications(call, 0, user.language)
+    await call.answer(_t(user, "✅ Approved.", "✅ Підтверджено."))
+
 @router.callback_query(F.data.startswith("mod:verifications:reject:"))
 async def mod_verifications_reject(call: CallbackQuery):
     user = await _ensure_moderator(call)
@@ -347,6 +370,29 @@ async def mod_verifications_reject(call: CallbackQuery):
         payload={},
     )
     await _show_pending_verifications(call, offset, user.language)
+    await call.answer(_t(user, "❌ Rejected.", "❌ Відхилено."))
+
+@router.callback_query(F.data.startswith("verify:reject:"))
+async def mod_verifications_reject_legacy(call: CallbackQuery):
+    user = await _ensure_moderator(call)
+    if not user:
+        return
+    try:
+        editor_user_id = int(call.data.split(":")[-1])
+    except ValueError:
+        await call.answer(_t(user, "Invalid user ID.", "Некоректний ID користувача."), show_alert=True)
+        return
+
+    await set_editor_verification(editor_user_id, "rejected", note="rejected by moderator")
+    await log_moderation_action(
+        moderator_user_id=user.id,
+        action_type="verify_reject",
+        target_user_id=editor_user_id,
+        object_type="editor_profile",
+        object_id=editor_user_id,
+        payload={"legacy_callback": True},
+    )
+    await _show_pending_verifications(call, 0, user.language)
     await call.answer(_t(user, "❌ Rejected.", "❌ Відхилено."))
 
 @router.callback_query(F.data.startswith("mod:verifications:chat:"))
@@ -378,6 +424,32 @@ async def mod_verifications_chat(call: CallbackQuery, state: FSMContext):
             _t(user, "Moderator is waiting for your verification message. You can reply here.", "Модератор очікує ваше повідомлення по верифікації. Ви можете відповісти тут."),
             reply_markup=kb_verify_chat_reply(user.id, user.language),
         )
+
+@router.callback_query(F.data.startswith("verify:msg:"))
+async def mod_verifications_message_legacy(call: CallbackQuery, state: FSMContext):
+    user = await _ensure_moderator(call)
+    if not user:
+        return
+    try:
+        target_user_id = int(call.data.split(":")[-1])
+    except ValueError:
+        await call.answer(_t(user, "Invalid user ID.", "Некоректний ID користувача."), show_alert=True)
+        return
+
+    await state.clear()
+    await state.set_state(ModerationMessage.waiting_text)
+    await state.update_data(
+        target_user_ids=[target_user_id],
+        object_type="editor_profile",
+        object_id=target_user_id,
+        action_type="verification_message",
+    )
+    await _safe_edit_or_send(
+        call,
+        _t(user, "✉️ Send a single message to the user:", "✉️ Напишіть повідомлення користувачу одним повідомленням:"),
+        reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
+    )
+    await call.answer()
 
 @router.callback_query(F.data.startswith("mod:verifications:msg:"))
 async def mod_verifications_message(call: CallbackQuery, state: FSMContext):

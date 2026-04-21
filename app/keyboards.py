@@ -559,15 +559,15 @@ def kb_deadline_quick(back: str, cancel: str, lang: str | None = None) -> Inline
 
 
 
-def kb_verify_chat_reply(moderator_user_id: int) -> InlineKeyboardMarkup:
+def kb_verify_chat_reply(moderator_user_id: int, lang: str | None = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
-    b.button(text="💬 Ответить", callback_data=f"verify:chat:reply:{moderator_user_id}")
+    b.button(text=_tr(lang, "💬 Reply", "💬 Відповісти"), callback_data=f"verify:chat:reply:{moderator_user_id}")
     b.adjust(1)
     return b.as_markup()
 
-def kb_verify_chat_controls() -> InlineKeyboardMarkup:
+def kb_verify_chat_controls(lang: str | None = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
-    b.button(text="🚪 Выйти", callback_data="verify:chat:exit")
+    b.button(text=_tr(lang, "🚪 Exit", "🚪 Вийти"), callback_data="verify:chat:exit")
     b.adjust(1)
     return b.as_markup()
 
