@@ -182,7 +182,7 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
                 call,
                 state,
                 texts.tr(user.language, "🔎 Available orders:", "🔎 Доступні замовлення:"),
-                reply_markup=kb_editor_orders_list(orders, user.language),
+                reply_markup=kb_editor_orders_list(orders),
             )
     elif call.data == "editor:my_proposals":
         orders = await list_orders_for_editor(user.id, limit=10)
@@ -198,7 +198,7 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
                 call,
                 state,
                 texts.tr(user.language, "📬 My proposals:", "📬 Мої відгуки:"),
-                reply_markup=kb_editor_my_orders_list(orders, user.language),
+                reply_markup=kb_editor_my_orders_list(orders),
             )
     elif call.data == "editor:my_deals":
         orders = await list_deals_for_editor(user.id, limit=10)
