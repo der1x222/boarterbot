@@ -272,7 +272,7 @@ async def editor_order_view(call: CallbackQuery, state: FSMContext):
         try:
             order_id = int(call.data.split(":")[-1])
         except (ValueError, IndexError):
-            await call.answer(texts.tr(user.language, "Invalid order.", "Невірний заказ."), show_alert=True)
+            await call.answer(texts.t("order_invalid", user.language), show_alert=True)
             return
         
         # Get offset from state or default
@@ -283,12 +283,12 @@ async def editor_order_view(call: CallbackQuery, state: FSMContext):
         # Get order details
         order = await get_order_by_id(order_id)
         if not order:
-            await call.answer(texts.tr(user.language, "Order not found.", "Заказ не знайдений."), show_alert=True)
+            await call.answer(texts.t("order_not_found", user.language), show_alert=True)
             return
         
         # Check if order is still open
         if order.get("status") != "open":
-            await call.answer(texts.tr(user.language, "This order is no longer available.", "Цей заказ більше недоступний."), show_alert=True)
+            await call.answer(texts.t("order_no_longer_available", user.language), show_alert=True)
             return
         
         # Format order details
@@ -298,11 +298,15 @@ async def editor_order_view(call: CallbackQuery, state: FSMContext):
         currency = order.get("currency", "USD")
         deadline = order.get("deadline_at", "?")
         
+        budget_label = texts.t("order_budget", user.language)
+        deadline_label = texts.t("order_deadline", user.language)
+        details_label = texts.t("order_details", user.language)
+        
         text = (
             f"📋 <b>{title}</b>\n\n"
-            f"💰 <b>Budget:</b> {budget} {currency}\n"
-            f"📅 <b>Deadline:</b> {deadline}\n\n"
-            f"📝 <b>Details:</b>\n{description}\n"
+            f"💰 <b>{budget_label}</b> {budget} {currency}\n"
+            f"📅 <b>{deadline_label}</b> {deadline}\n\n"
+            f"📝 <b>{details_label}</b>\n{description}\n"
         )
         
         await state.update_data(editor_orders_offset=offset, editor_orders_total=total)
@@ -328,13 +332,13 @@ async def editor_order_apply(call: CallbackQuery, state: FSMContext):
         try:
             order_id = int(call.data.split(":")[-1])
         except (ValueError, IndexError):
-            await call.answer(texts.tr(user.language, "Invalid order.", "Невірний заказ."), show_alert=True)
+            await call.answer(texts.t("order_invalid", user.language), show_alert=True)
             return
         
         # Check if editor already applied
         order = await get_order_by_id(order_id)
         if not order or order.get("status") != "open":
-            await call.answer(texts.tr(user.language, "Order not available.", "Заказ недоступний."), show_alert=True)
+            await call.answer(texts.t("order_not_available", user.language), show_alert=True)
             return
         
         # Store order_id for proposal flow and enter state
@@ -345,7 +349,7 @@ async def editor_order_apply(call: CallbackQuery, state: FSMContext):
         await send_clean_from_call(
             call,
             state,
-            texts.tr(user.language, "Enter your proposed price (in numbers only, e.g., 50.5):", "Введіть вашу запропоновану ціну (тільки цифри, напр. 50.5):"),
+            texts.t("order_propose_price", user.language),
             reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
         )
     except Exception as e:
@@ -363,16 +367,16 @@ async def editor_order_chat(call: CallbackQuery, state: FSMContext):
         try:
             order_id = int(call.data.split(":")[-1])
         except (ValueError, IndexError):
-            await call.answer(texts.tr(user.language, "Invalid order.", "Невірний заказ."), show_alert=True)
+            await call.answer(texts.t("order_invalid", user.language), show_alert=True)
             return
         
         # Check if order exists and is open
         order = await get_order_by_id(order_id)
         if not order or order.get("status") != "open":
-            await call.answer(texts.tr(user.language, "Order not available.", "Заказ недоступний."), show_alert=True)
+            await call.answer(texts.t("order_not_available", user.language), show_alert=True)
             return
         
-        await call.answer(texts.tr(user.language, "Chat with client is available after you apply.", "Чат з клієнтом доступний після того, як ви подали заявку."), show_alert=True)
+        await call.answer(texts.t("order_chat_available_after_apply", user.language), show_alert=True)
     except Exception as e:
         print(f"Error in editor_order_chat: {e}")
 

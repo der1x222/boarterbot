@@ -89,6 +89,66 @@ TEXTS = {
         "en": "Українська",
         "ua": "Українська",
     },
+    "orders_no_available": {
+        "en": "🔎 No available orders yet.",
+        "ua": "🔎 Доступних замовлень поки немає.",
+    },
+    "orders_available": {
+        "en": "🔎 Available orders",
+        "ua": "🔎 Доступні замовлення",
+    },
+    "order_invalid": {
+        "en": "Invalid order.",
+        "ua": "Невірний заказ.",
+    },
+    "order_not_found": {
+        "en": "Order not found.",
+        "ua": "Заказ не знайдений.",
+    },
+    "order_no_longer_available": {
+        "en": "This order is no longer available.",
+        "ua": "Цей заказ більше недоступний.",
+    },
+    "order_not_available": {
+        "en": "Order not available.",
+        "ua": "Заказ недоступний.",
+    },
+    "order_budget": {
+        "en": "Budget:",
+        "ua": "Бюджет:",
+    },
+    "order_deadline": {
+        "en": "Deadline:",
+        "ua": "Дата виконання:",
+    },
+    "order_details": {
+        "en": "Details:",
+        "ua": "Деталі:",
+    },
+    "order_propose_price": {
+        "en": "Enter your proposed price (in numbers only, e.g., 50.5):",
+        "ua": "Введіть вашу запропоновану ціну (тільки цифри, напр. 50.5):",
+    },
+    "order_chat_available_after_apply": {
+        "en": "Chat with client is available after you apply.",
+        "ua": "Чат з клієнтом доступний після того, як ви подали заявку.",
+    },
+    "order_btn_chat": {
+        "en": "💬 Chat",
+        "ua": "💬 Чат",
+    },
+    "order_btn_apply": {
+        "en": "📝 Apply",
+        "ua": "📝 Откликнуться",
+    },
+    "order_btn_offer_price": {
+        "en": "💰 Offer price",
+        "ua": "💰 Запропонувати ціну",
+    },
+    "order_btn_back_to_list": {
+        "en": "⬅️ Back to list",
+        "ua": "⬅️ До списку",
+    },
 }
 
 
