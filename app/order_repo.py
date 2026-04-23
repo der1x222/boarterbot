@@ -57,20 +57,27 @@ async def get_order_for_client(order_id: int, user_id: int) -> dict | None:
         )
     return dict(row) if row else None
 
-async def list_open_orders(limit: int = 10) -> list[dict]:
+async def list_open_orders(limit: int = 10, offset: int = 0) -> list[dict]:
     p = pool()
     async with p.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, title, budget_minor, currency, created_at, deadline_at
+            SELECT id, title, description, budget_minor, currency, created_at, deadline_at
             FROM orders
             WHERE status = 'open'
             ORDER BY created_at DESC
-            LIMIT $1
+            LIMIT $1 OFFSET $2
             """,
             limit,
+            offset,
         )
     return [dict(r) for r in rows]
+
+async def count_open_orders() -> int:
+    p = pool()
+    async with p.acquire() as conn:
+        row = await conn.fetchrow("SELECT COUNT(*) as count FROM orders WHERE status = 'open'")
+    return int(row['count']) if row else 0
 
 async def list_orders_for_editor(user_id: int, limit: int = 10) -> list[dict]:
     p = pool()

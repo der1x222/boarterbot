@@ -258,6 +258,159 @@ async def _finalize_edit_order(user, state: FSMContext, bot, chat_id: int, deadl
         reply_markup=await get_menu_markup_for_user(user),
     )
 
+# ---------- editor order viewing ----------
+
+@router.callback_query(F.data.startswith("editor:order_view:"))
+async def editor_order_view(call: CallbackQuery, state: FSMContext):
+    try:
+        user = await get_user_by_telegram_id(call.from_user.id)
+        if not user:
+            await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
+            return
+        
+        # Parse order_id
+        try:
+            order_id = int(call.data.split(":")[-1])
+        except (ValueError, IndexError):
+            await call.answer(texts.tr(user.language, "Invalid order.", "Невірний заказ."), show_alert=True)
+            return
+        
+        # Get offset from state or default
+        data = await state.get_data()
+        offset = data.get("editor_orders_offset", 0)
+        total = data.get("editor_orders_total", 0)
+        
+        # Get order details
+        order = await get_order_by_id(order_id)
+        if not order:
+            await call.answer(texts.tr(user.language, "Order not found.", "Заказ не знайдений."), show_alert=True)
+            return
+        
+        # Check if order is still open
+        if order.get("status") != "open":
+            await call.answer(texts.tr(user.language, "This order is no longer available.", "Цей заказ більше недоступний."), show_alert=True)
+            return
+        
+        # Format order details
+        title = order.get("title", "?")
+        description = order.get("description", "?")
+        budget = order.get("budget_minor", 0) / 100
+        currency = order.get("currency", "USD")
+        deadline = order.get("deadline_at", "?")
+        
+        text = (
+            f"📋 <b>{title}</b>\n\n"
+            f"💰 <b>Budget:</b> {budget} {currency}\n"
+            f"📅 <b>Deadline:</b> {deadline}\n\n"
+            f"📝 <b>Details:</b>\n{description}\n"
+        )
+        
+        await state.update_data(editor_orders_offset=offset, editor_orders_total=total)
+        await send_clean_from_call(
+            call,
+            state,
+            text,
+            reply_markup=kb_editor_order_detail(order_id, offset, total, user.language),
+        )
+        await call.answer()
+    except Exception as e:
+        print(f"Error in editor_order_view: {e}")
+        await call.answer(texts.tr(user.language if 'user' in locals() else None, "Error", "Помилка"), show_alert=True)
+
+@router.callback_query(F.data.startswith("editor:order_apply:"))
+async def editor_order_apply(call: CallbackQuery, state: FSMContext):
+    try:
+        user = await get_user_by_telegram_id(call.from_user.id)
+        if not user:
+            await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
+            return
+        
+        try:
+            order_id = int(call.data.split(":")[-1])
+        except (ValueError, IndexError):
+            await call.answer(texts.tr(user.language, "Invalid order.", "Невірний заказ."), show_alert=True)
+            return
+        
+        # Check if editor already applied
+        order = await get_order_by_id(order_id)
+        if not order or order.get("status") != "open":
+            await call.answer(texts.tr(user.language, "Order not available.", "Заказ недоступний."), show_alert=True)
+            return
+        
+        # Store order_id for proposal flow and enter state
+        await state.set_state(EditorProposal.waiting_price)
+        await state.update_data(order_id=order_id, editor_id=user.id)
+        
+        await call.answer()
+        await send_clean_from_call(
+            call,
+            state,
+            texts.tr(user.language, "Enter your proposed price (in numbers only, e.g., 50.5):", "Введіть вашу запропоновану ціну (тільки цифри, напр. 50.5):"),
+            reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
+        )
+    except Exception as e:
+        print(f"Error in editor_order_apply: {e}")
+        await call.answer(texts.tr(user.language if 'user' in locals() else None, "Error", "Помилка"), show_alert=True)
+
+@router.callback_query(F.data.startswith("editor:order_chat:"))
+async def editor_order_chat(call: CallbackQuery, state: FSMContext):
+    try:
+        user = await get_user_by_telegram_id(call.from_user.id)
+        if not user:
+            await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
+            return
+        
+        try:
+            order_id = int(call.data.split(":")[-1])
+        except (ValueError, IndexError):
+            await call.answer(texts.tr(user.language, "Invalid order.", "Невірний заказ."), show_alert=True)
+            return
+        
+        # Check if order exists and is open
+        order = await get_order_by_id(order_id)
+        if not order or order.get("status") != "open":
+            await call.answer(texts.tr(user.language, "Order not available.", "Заказ недоступний."), show_alert=True)
+            return
+        
+        await call.answer(texts.tr(user.language, "Chat with client is available after you apply.", "Чат з клієнтом доступний після того, як ви подали заявку."), show_alert=True)
+    except Exception as e:
+        print(f"Error in editor_order_chat: {e}")
+
+@router.callback_query(F.data.startswith("editor:order_propose:"))
+async def editor_order_propose(call: CallbackQuery, state: FSMContext):
+    try:
+        user = await get_user_by_telegram_id(call.from_user.id)
+        if not user:
+            await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
+            return
+        
+        try:
+            order_id = int(call.data.split(":")[-1])
+        except (ValueError, IndexError):
+            await call.answer(texts.tr(user.language, "Invalid order.", "Невірний заказ."), show_alert=True)
+            return
+        
+        # Check if order exists and is open
+        order = await get_order_by_id(order_id)
+        if not order or order.get("status") != "open":
+            await call.answer(texts.tr(user.language, "Order not available.", "Заказ недоступний."), show_alert=True)
+            return
+        
+        # Store order_id for proposal flow and enter state
+        await state.set_state(EditorProposal.waiting_price)
+        await state.update_data(order_id=order_id, editor_id=user.id)
+        
+        await call.answer()
+        await send_clean_from_call(
+            call,
+            state,
+            texts.tr(user.language, "Enter your proposed price (in numbers only, e.g., 50.5):", "Введіть вашу запропоновану ціну (тільки цифри, напр. 50.5):"),
+            reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
+        )
+    except Exception as e:
+        print(f"Error in editor_order_propose: {e}")
+        await call.answer(texts.tr(user.language if 'user' in locals() else None, "Error", "Помилка"), show_alert=True)
+
 # ---------- create order flow ----------
 
 @router.callback_query(F.data == "client:create_order")

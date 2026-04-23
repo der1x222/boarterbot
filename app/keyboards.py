@@ -304,18 +304,27 @@ def kb_support(admin_username: str, lang: str | None = None) -> InlineKeyboardMa
     b.adjust(1, 1)
     return b.as_markup()
 
-def kb_editor_orders_list(orders: list[dict]) -> InlineKeyboardMarkup:
+def kb_editor_orders_list(orders: list[dict], offset: int = 0, total: int = 0, lang: str | None = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     for o in orders:
         title = (o.get('title') or '-').strip()
-        if len(title) > 24:
-            title = title[:21] + '...'
-        b.button(text=f"📄 Детали #{o['id']} {title}", callback_data=f"order:details:{o['id']}")
-    b.button(text="🏠 Меню", callback_data="common:menu")
-    b.button(text="🆘 Поддержка", callback_data="common:support")
-    sizes = [1] * len(orders)
-    sizes.append(2)
-    b.adjust(*sizes)
+        if len(title) > 20:
+            title = title[:17] + '...'
+        budget = o.get('budget_minor', 0) / 100
+        currency = (o.get('currency') or 'USD').upper()
+        b.button(text=f"📄 {title}\n💰 {budget} {currency}", callback_data=f"editor:order_view:{o['id']}")
+    
+    # Pagination and menu buttons
+    nav_buttons = []
+    if offset > 0:
+        nav_buttons.append(InlineKeyboardButton(text=_tr(lang, "⬅️ Prev", "⬅️ Попередній"), callback_data=f"editor:orders:page:{offset - 5}"))
+    if offset + 5 < total:
+        nav_buttons.append(InlineKeyboardButton(text=_tr(lang, "▶️ Next", "▶️ Наступний"), callback_data=f"editor:orders:page:{offset + 5}"))
+    if nav_buttons:
+        b.row(*nav_buttons)
+    
+    b.row(InlineKeyboardButton(text=_tr(lang, "🏠 Menu", "🏠 Меню"), callback_data="common:menu"))
+    
     return b.as_markup()
 
 def kb_editor_my_orders_list(orders: list[dict]) -> InlineKeyboardMarkup:
@@ -332,14 +341,18 @@ def kb_editor_my_orders_list(orders: list[dict]) -> InlineKeyboardMarkup:
     b.adjust(*sizes)
     return b.as_markup()
 
-def kb_editor_order_detail(order_id: int) -> InlineKeyboardMarkup:
+def kb_editor_order_detail(order_id: int, offset: int = 0, total: int = 0, lang: str | None = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
-    b.button(text="💬 Начать чат", callback_data=f"order:chat:{order_id}")
-    b.button(text="💰 Предложить цену", callback_data=f"order:proposal:{order_id}")
-    b.button(text="📋 Замовлення", callback_data="editor:orders")
-    b.button(text="🏠 Меню", callback_data="common:menu")
-    b.button(text="🆘 Поддержка", callback_data="common:support")
-    b.adjust(2, 1, 2)
+    b.button(text=_tr(lang, "💬 Chat", "💬 Чат"), callback_data=f"editor:order_chat:{order_id}")
+    b.button(text=_tr(lang, "📝 Apply", "📝 Откликнуться"), callback_data=f"editor:order_apply:{order_id}")
+    b.button(text=_tr(lang, "💰 Offer price", "💰 Запропонувати ціну"), callback_data=f"editor:order_propose:{order_id}")
+    
+    b.adjust(1, 2)
+    
+    # Back button to list
+    b.row(InlineKeyboardButton(text=_tr(lang, "⬅️ Back to list", "⬅️ До списку"), callback_data=f"editor:orders:page:{offset}"))
+    b.row(InlineKeyboardButton(text=_tr(lang, "🏠 Menu", "🏠 Меню"), callback_data="common:menu"))
+    
     return b.as_markup()
 
 def kb_deal_menu(order_id: int, lang: str | None = None, user_role: str = None, order_status: str = None, final_video_sent: bool = False, revision_requested: bool = False) -> InlineKeyboardMarkup:

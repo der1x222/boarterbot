@@ -17,7 +17,7 @@ from app.keyboards import (
     kb_nav_menu_help,
 )
 from app.profile_repo import get_editor_profile
-from app.order_repo import list_open_orders, list_orders_for_editor, list_deals_for_client, list_deals_for_editor, get_user_balance, list_balance_transactions, withdraw_balance, set_user_withdrawal_verification
+from app.order_repo import list_open_orders, count_open_orders, list_orders_for_editor, list_deals_for_client, list_deals_for_editor, get_user_balance, list_balance_transactions, withdraw_balance, set_user_withdrawal_verification
 from app import texts
 
 router = Router()
@@ -164,25 +164,43 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
             "After the work is completed and approved, funds are released to the editor, and both sides leave a review.",
             reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
         )
-    elif call.data in {"editor:find_orders", "editor:orders"}:
+    elif call.data in {"editor:find_orders", "editor:orders"} or call.data.startswith("editor:orders:page:"):
         p = await get_editor_profile(user.id)
         if not p or p.get("verification_status") != "verified":
             await call.answer(texts.tr(user.language, "⛔ Please verify first.", "⛔ Спочатку пройдіть верифікацію."), show_alert=True)
             return
-        orders = await list_open_orders(limit=10)
-        if not orders:
+        
+        # Get page offset
+        offset = 0
+        if call.data.startswith("editor:orders:page:"):
+            try:
+                offset = int(call.data.split(":")[-1])
+            except ValueError:
+                offset = 0
+        
+        total_orders = await count_open_orders()
+        orders = await list_open_orders(limit=5, offset=offset)
+        
+        # Save pagination state for later navigation
+        await state.update_data(editor_orders_offset=offset, editor_orders_total=total_orders)
+        
+        if not orders and offset == 0:
             await send_clean_from_call(
                 call,
                 state,
                 texts.tr(user.language, "🔎 No available orders yet.", "🔎 Доступних замовлень поки немає."),
                 reply_markup=await get_menu_markup_for_user(user),
             )
+        elif not orders:
+            # Вернуть на первую страницу если нет результатов
+            await call.answer(texts.tr(user.language, "No more orders.", "Більше немає замовлень."), show_alert=True)
+            return
         else:
             await send_clean_from_call(
                 call,
                 state,
-                texts.tr(user.language, "🔎 Available orders:", "🔎 Доступні замовлення:"),
-                reply_markup=kb_editor_orders_list(orders),
+                texts.tr(user.language, f"🔎 Available orders ({offset + 1}-{min(offset + 5, total_orders)}/{total_orders}):", f"🔎 Доступні замовлення ({offset + 1}-{min(offset + 5, total_orders)}/{total_orders}):"),
+                reply_markup=kb_editor_orders_list(orders, offset, total_orders, user.language),
             )
     elif call.data == "editor:my_proposals":
         orders = await list_orders_for_editor(user.id, limit=10)
