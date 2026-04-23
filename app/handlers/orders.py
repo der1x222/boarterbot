@@ -262,39 +262,43 @@ async def _finalize_edit_order(user, state: FSMContext, bot, chat_id: int, deadl
 
 @router.callback_query(F.data == "client:create_order")
 async def create_order_start(call: CallbackQuery, state: FSMContext):
-    user = await get_user_by_telegram_id(call.from_user.id)
-    if not user:
-        await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
-        return
-    if user.role != "client":
-        await call.answer(texts.tr(user.language, "Only clients can create orders.", "Тільки клієнти можуть створювати замовлення."), show_alert=True)
-        return
+    try:
+        user = await get_user_by_telegram_id(call.from_user.id)
+        if not user:
+            await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
+            return
+        if user.role != "client":
+            await call.answer(texts.tr(user.language, "Only clients can create orders.", "Тільки клієнти можуть створювати замовлення."), show_alert=True)
+            return
 
-    await state.clear()
-    await state.set_state(CreateOrder.waiting_title)
-    await state.update_data(
-        title="",
-        category="",
-        platform="",
-        task_details="",
-        materials="",
-        reference_url="",
-        budget_minor=0,
-        revision_price_minor=0,
-    )
-    data = await state.get_data()
-    await call.answer()
-    await send_clean_from_call(
-        call,
-        state,
-        f"{_build_order_preview(user.language, data)}\n\n"
-        + texts.tr(
-            user.language,
-            "Tap a button to fill a field. Start with title.",
-            "Натисніть кнопку, щоб заповнити поле. Почніть з назви.",
-        ),
-        reply_markup=kb_order_create_form(user.language),
-    )
+        await state.clear()
+        await state.set_state(CreateOrder.waiting_title)
+        await state.update_data(
+            title="",
+            category="",
+            platform="",
+            task_details="",
+            materials="",
+            reference_url="",
+            budget_minor=0,
+            revision_price_minor=0,
+        )
+        data = await state.get_data()
+        await call.answer()
+        await send_clean_from_call(
+            call,
+            state,
+            f"{_build_order_preview(user.language, data)}\n\n"
+            + texts.tr(
+                user.language,
+                "Tap a button to fill a field. Start with title.",
+                "Натисніть кнопку, щоб заповнити поле. Почніть з назви.",
+            ),
+            reply_markup=kb_order_create_form(user.language),
+        )
+    except Exception as e:
+        print(f"Error in create_order_start: {e}")
+        await call.answer(f"Error: {str(e)}", show_alert=True)
 
 @router.callback_query(F.data.startswith("order:back:"))
 async def create_order_back(call: CallbackQuery, state: FSMContext):
