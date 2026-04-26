@@ -2,9 +2,12 @@ import aiohttp
 import json
 import base64
 import hashlib
+import logging
 from urllib.parse import quote_plus
 from typing import Optional, Tuple, Dict, Any
 from app.config import load_config
+
+logger = logging.getLogger(__name__)
 
 class PaymentAPI:
     """LiqPay payment API client for creating checkout links and verifying status."""
@@ -38,10 +41,12 @@ class PaymentAPI:
         customer_email: Optional[str],
         order_title: str,
         description: str = "",
+        is_revision: bool = False,
     ) -> Tuple[Optional[str], str]:
         """Create a LiqPay checkout link for the order."""
         try:
             amount = amount_minor / 100
+            liqpay_order_id = f"revision_{order_id}" if is_revision else str(order_id)
             payload = {
                 "version": "3",
                 "public_key": self.public_key,
@@ -49,7 +54,7 @@ class PaymentAPI:
                 "amount": f"{amount:.2f}",
                 "currency": currency.upper(),
                 "description": description or f"Payment for order #{order_id}",
-                "order_id": str(order_id),
+                "order_id": liqpay_order_id,
                 "language": "en",
                 "server_url": f"{self.config.app_url}/webhook/payment",
                 "result_url": self.config.app_url,
@@ -67,7 +72,7 @@ class PaymentAPI:
             return payment_link, str(order_id)
 
         except Exception as e:
-            print(f"Error creating LiqPay payment link for order {order_id}: {e}")
+            logger.error(f"Error creating LiqPay payment link for order {order_id}: {e}")
             return None, ""
 
     async def verify_payment(self, payment_id: str) -> bool:
@@ -78,6 +83,8 @@ class PaymentAPI:
         order_id = payment_id
         if payment_id.startswith("liqpay_"):
             order_id = payment_id.split("_", 1)[1]
+        if order_id.startswith("revision_"):
+            order_id = order_id.split("_", 1)[1]
 
         payload = {
             "version": "3",
@@ -104,7 +111,7 @@ class PaymentAPI:
                     return status in {"success", "sandbox"}
 
         except Exception as e:
-            print(f"Error verifying LiqPay payment {payment_id}: {e}")
+            logger.error(f"Error verifying LiqPay payment {payment_id}: {e}")
             return False
 
     async def get_payment_details(self, payment_id: str) -> Optional[Dict[str, Any]]:
@@ -115,6 +122,8 @@ class PaymentAPI:
         order_id = payment_id
         if payment_id.startswith("liqpay_"):
             order_id = payment_id.split("_", 1)[1]
+        if order_id.startswith("revision_"):
+            order_id = order_id.split("_", 1)[1]
 
         payload = {
             "version": "3",
@@ -139,7 +148,7 @@ class PaymentAPI:
                     return await response.json()
 
         except Exception as e:
-            print(f"Error getting LiqPay payment details {payment_id}: {e}")
+            logger.error(f"Error getting LiqPay payment details {payment_id}: {e}")
             return None
 
 
@@ -160,6 +169,7 @@ async def create_payment_link(
     currency: str,
     customer_email: str | None,
     order_title: str,
+    is_revision: bool = False,
 ) -> Tuple[Optional[str], str]:
     """Create payment link using the payment API"""
     api = get_payment_api()
@@ -169,6 +179,7 @@ async def create_payment_link(
         currency=currency,
         customer_email=customer_email,
         order_title=order_title,
+        is_revision=is_revision,
     )
 
 async def verify_payment(payment_id: str) -> bool:

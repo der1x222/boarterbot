@@ -11,7 +11,9 @@ ALTER TABLE orders
   ADD COLUMN IF NOT EXISTS revision_payment_link TEXT,
   ADD COLUMN IF NOT EXISTS revision_stripe_session_id TEXT,
   ADD COLUMN IF NOT EXISTS final_video_sent BOOLEAN DEFAULT FALSE,
-  ADD COLUMN IF NOT EXISTS client_confirmed_completion BOOLEAN DEFAULT FALSE;
+  ADD COLUMN IF NOT EXISTS client_confirmed_completion BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS reserved_amount_minor BIGINT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS reserved_revision_amount_minor BIGINT DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS balance_transactions (
   id SERIAL PRIMARY KEY,
@@ -25,3 +27,18 @@ CREATE TABLE IF NOT EXISTS balance_transactions (
 
 CREATE INDEX IF NOT EXISTS idx_balance_transactions_user_id ON balance_transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_balance_transactions_created_at ON balance_transactions(created_at);
+
+CREATE TABLE IF NOT EXISTS withdrawal_requests (
+  id SERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id),
+  amount_minor BIGINT NOT NULL, -- amount to withdraw
+  fee_minor BIGINT NOT NULL, -- 10% fee
+  net_amount_minor BIGINT NOT NULL, -- amount - fee
+  payment_details TEXT NOT NULL, -- JSON with payment info
+  status TEXT DEFAULT 'pending', -- pending, completed, rejected
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  processed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_withdrawal_requests_user_id ON withdrawal_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_withdrawal_requests_status ON withdrawal_requests(status);

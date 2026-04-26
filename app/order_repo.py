@@ -136,7 +136,10 @@ async def get_order_by_id(order_id: int) -> dict | None:
             """
             SELECT id, client_id, editor_id, title, description, budget_minor, revision_price_minor, currency, status,
                    created_at, deadline_at, dispute_opened_at, dispute_opened_by, dispute_client_agree, dispute_editor_agree,
-                   agreed_price_minor, payment_status, payment_link, paid_at
+                   agreed_price_minor, payment_status, payment_link, paid_at,
+                   revision_requested, revision_status, revision_description, revision_payment_link,
+                   final_video_sent, client_confirmed_completion,
+                   reserved_amount_minor, reserved_revision_amount_minor
             FROM orders
             WHERE id = $1
             """,
@@ -162,19 +165,32 @@ async def list_active_deals(limit: int = 20) -> list[dict]:
 async def set_payment_status(order_id: int, payment_status: str) -> bool:
     p = pool()
     async with p.acquire() as conn:
-        row = await conn.fetchrow(
-            """
-            UPDATE orders
-            SET payment_status = $2,
-                updated_at = NOW()
-            WHERE id = $1
-            RETURNING id
-            """,
-            order_id,
-            payment_status,
-        )
+        if payment_status == 'paid':
+            row = await conn.fetchrow(
+                """
+                UPDATE orders
+                SET payment_status = $2,
+                    paid_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = $1
+                RETURNING id
+                """,
+                order_id,
+                payment_status,
+            )
+        else:
+            row = await conn.fetchrow(
+                """
+                UPDATE orders
+                SET payment_status = $2,
+                    updated_at = NOW()
+                WHERE id = $1
+                RETURNING id
+                """,
+                order_id,
+                payment_status,
+            )
     return bool(row)
-
 async def create_deal_message(order_id: int, sender_user_id: int, sender_role: str, content: str) -> int:
     p = pool()
     async with p.acquire() as conn:
@@ -483,6 +499,91 @@ async def list_balance_transactions(user_id: int, limit: int = 20) -> list[dict]
         )
     return [dict(r) for r in rows]
 
+async def get_pending_payments() -> list[dict]:
+    """Get orders with pending payments (main or revision)"""
+    p = pool()
+    async with p.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, payment_status, revision_status, stripe_session_id, client_id, editor_id
+            FROM orders
+            WHERE (payment_status = 'pending' AND stripe_session_id IS NOT NULL)
+               OR (revision_status = 'payment_pending' AND stripe_session_id IS NOT NULL)
+            ORDER BY updated_at ASC
+            LIMIT 50
+            """,
+        )
+    return [dict(r) for r in rows]
+
+async def update_payment_status_if_needed(order_id: int, new_status: str, is_revision: bool = False) -> bool:
+    """Update payment status if it's still pending"""
+    p = pool()
+    async with p.acquire() as conn:
+        if is_revision:
+            row = await conn.fetchrow(
+                """
+                UPDATE orders
+                SET revision_status = CASE
+                        WHEN revision_status = 'payment_pending' THEN $2
+                        ELSE revision_status
+                    END,
+                    updated_at = NOW()
+                WHERE id = $1 AND revision_status = 'payment_pending'
+                RETURNING id
+                """,
+                order_id,
+                new_status,
+            )
+        else:
+            row = await conn.fetchrow(
+                """
+                UPDATE orders
+                SET payment_status = CASE
+                        WHEN payment_status = 'pending' THEN $2
+                        ELSE payment_status
+                    END,
+                    paid_at = CASE
+                        WHEN payment_status = 'pending' AND $2 = 'paid' THEN NOW()
+                        ELSE paid_at
+                    END,
+                    updated_at = NOW()
+                WHERE id = $1 AND payment_status = 'pending'
+                RETURNING id
+                """,
+                order_id,
+                new_status,
+            )
+    return bool(row)
+
+async def cancel_order_if_payment_failed(order_id: int, is_revision: bool = False) -> bool:
+    """Cancel order or revision if payment failed"""
+    p = pool()
+    async with p.acquire() as conn:
+        if is_revision:
+            row = await conn.fetchrow(
+                """
+                UPDATE orders
+                SET revision_status = 'cancelled',
+                    updated_at = NOW()
+                WHERE id = $1 AND revision_status = 'payment_pending'
+                RETURNING id
+                """,
+                order_id,
+            )
+        else:
+            row = await conn.fetchrow(
+                """
+                UPDATE orders
+                SET status = 'cancelled',
+                    payment_status = 'failed',
+                    updated_at = NOW()
+                WHERE id = $1 AND payment_status = 'pending' AND status = 'accepted'
+                RETURNING id
+                """,
+                order_id,
+            )
+    return bool(row)
+
 async def set_user_withdrawal_verification(user_id: int, verified: bool) -> bool:
     """Set user's withdrawal verification status"""
     p = pool()
@@ -574,6 +675,40 @@ async def set_revision_payment_link(order_id: int, payment_link: str, payment_se
         )
     return bool(row)
 
+async def set_reserved_amount(order_id: int, amount_minor: int) -> bool:
+    """Set reserved amount for main payment"""
+    p = pool()
+    async with p.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE orders
+            SET reserved_amount_minor = $2,
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING id
+            """,
+            order_id,
+            amount_minor,
+        )
+    return bool(row)
+
+async def set_reserved_revision_amount(order_id: int, amount_minor: int) -> bool:
+    """Set reserved amount for revision payment"""
+    p = pool()
+    async with p.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE orders
+            SET reserved_revision_amount_minor = $2,
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING id
+            """,
+            order_id,
+            amount_minor,
+        )
+    return bool(row)
+
 async def mark_revision_paid(order_id: int) -> bool:
     """Mark revision as paid"""
     p = pool()
@@ -609,33 +744,16 @@ async def mark_final_video_sent(order_id: int) -> bool:
     return bool(row)
 
 async def confirm_order_completion(order_id: int) -> bool:
-    """Client confirms order completion"""
-    p = pool()
-    async with p.acquire() as conn:
-        row = await conn.fetchrow(
-            """
-            UPDATE orders
-            SET client_confirmed_completion = TRUE,
-                status = 'completed',
-                updated_at = NOW()
-            WHERE id = $1 AND status = 'accepted' AND final_video_sent = TRUE
-            RETURNING id
-            """,
-            order_id,
-        )
-    return bool(row)
-
-async def complete_order_and_credit_editor(order_id: int) -> bool:
-    """Complete order, credit editor's balance, and delete order if no disputes"""
+    """Client confirms order completion, credit editor with reserved funds"""
     p = pool()
     async with p.acquire() as conn:
         async with conn.transaction():
             # Get order details
             order = await conn.fetchrow(
                 """
-                SELECT editor_id, agreed_price_minor, revision_price_minor, revision_status
+                SELECT editor_id, reserved_amount_minor, reserved_revision_amount_minor
                 FROM orders
-                WHERE id = $1 AND status = 'completed' AND client_confirmed_completion = TRUE
+                WHERE id = $1 AND status = 'accepted' AND final_video_sent = TRUE
                 """,
                 order_id,
             )
@@ -643,39 +761,205 @@ async def complete_order_and_credit_editor(order_id: int) -> bool:
                 return False
 
             editor_id = order["editor_id"]
-            base_amount = order["agreed_price_minor"] or 0
-            revision_amount = order["revision_price_minor"] or 0 if order["revision_status"] == "paid" else 0
-            total_amount = base_amount + revision_amount
+            reserved_base = order["reserved_amount_minor"] or 0
+            reserved_revision = order["reserved_revision_amount_minor"] or 0
+            total_reserved = reserved_base + reserved_revision
 
-            # Credit editor's balance
+            if total_reserved > 0:
+                # Credit editor's balance
+                await conn.execute(
+                    """
+                    UPDATE users
+                    SET virtual_balance_minor = virtual_balance_minor + $2,
+                        total_earned_minor = total_earned_minor + $2,
+                        updated_at = NOW()
+                    WHERE id = $1
+                    """,
+                    editor_id,
+                    total_reserved,
+                )
+
+                # Log transaction
+                await conn.execute(
+                    """
+                    INSERT INTO balance_transactions (user_id, amount_minor, transaction_type, order_id, description)
+                    VALUES ($1, $2, 'earned', $3, 'Order completion')
+                    """,
+                    editor_id,
+                    total_reserved,
+                    order_id,
+                )
+
+            # Update order status and clear reserved
+            row = await conn.fetchrow(
+                """
+                UPDATE orders
+                SET client_confirmed_completion = TRUE,
+                    status = 'completed',
+                    reserved_amount_minor = 0,
+                    reserved_revision_amount_minor = 0,
+                    updated_at = NOW()
+                WHERE id = $1
+                RETURNING id
+                """,
+                order_id,
+            )
+            return bool(row)
+
+async def complete_order_and_credit_editor(order_id: int) -> bool:
+    """Complete order (funds already credited), delete order if no disputes"""
+    p = pool()
+    async with p.acquire() as conn:
+        # Funds are already credited in confirm_order_completion
+        # Just delete the completed order (assuming no disputes)
+        await conn.execute(
+            "DELETE FROM orders WHERE id = $1 AND status = 'completed'",
+            order_id,
+        )
+    return True
+
+# ---------- Withdrawal functions ----------
+
+async def create_withdrawal_request(user_id: int, amount_minor: int, payment_details: str) -> int | None:
+    """Create a withdrawal request, deduct from balance"""
+    fee_minor = amount_minor // 10  # 10% fee
+    net_amount_minor = amount_minor - fee_minor
+    total_deduct = amount_minor  # deduct the full amount requested
+
+    p = pool()
+    async with p.acquire() as conn:
+        async with conn.transaction():
+            # Check balance
+            balance_row = await conn.fetchrow(
+                "SELECT virtual_balance_minor FROM users WHERE id = $1",
+                user_id,
+            )
+            if not balance_row or balance_row["virtual_balance_minor"] < total_deduct:
+                return None
+
+            # Deduct from balance
             await conn.execute(
                 """
                 UPDATE users
-                SET virtual_balance_minor = virtual_balance_minor + $2,
-                    total_earned_minor = total_earned_minor + $2,
+                SET virtual_balance_minor = virtual_balance_minor - $2,
                     updated_at = NOW()
                 WHERE id = $1
                 """,
-                editor_id,
-                total_amount,
+                user_id,
+                total_deduct,
             )
 
             # Log transaction
             await conn.execute(
                 """
-                INSERT INTO balance_transactions (user_id, amount_minor, transaction_type, order_id, description)
-                VALUES ($1, $2, 'earned', $3, 'Order completion')
+                INSERT INTO balance_transactions (user_id, amount_minor, transaction_type, description)
+                VALUES ($1, $2, 'withdrawn', $3)
                 """,
-                editor_id,
-                total_amount,
-                order_id,
-                f"Order #{order_id} completed",
+                user_id,
+                -total_deduct,
+                f"Withdrawal request: {amount_minor / 100:.2f} USD (fee: {fee_minor / 100:.2f} USD)",
             )
 
-            # Delete the completed order (no disputes)
-            await conn.execute(
-                "DELETE FROM orders WHERE id = $1",
-                order_id,
+            # Create withdrawal request
+            row = await conn.fetchrow(
+                """
+                INSERT INTO withdrawal_requests (user_id, amount_minor, fee_minor, net_amount_minor, payment_details)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id
+                """,
+                user_id,
+                amount_minor,
+                fee_minor,
+                net_amount_minor,
+                payment_details,
             )
+            return row["id"] if row else None
 
-    return True
+async def list_withdrawal_requests(user_id: int, limit: int = 10) -> list[dict]:
+    """List user's withdrawal requests"""
+    p = pool()
+    async with p.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, amount_minor, fee_minor, net_amount_minor, payment_details, status, created_at, processed_at
+            FROM withdrawal_requests
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2
+            """,
+            user_id,
+            limit,
+        )
+    return [dict(r) for r in rows]
+
+async def get_pending_withdrawals() -> list[dict]:
+    """Get all pending withdrawal requests for admin"""
+    p = pool()
+    async with p.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT wr.id, wr.user_id, wr.amount_minor, wr.fee_minor, wr.net_amount_minor, wr.payment_details, wr.created_at,
+                   u.telegram_id, u.username
+            FROM withdrawal_requests wr
+            JOIN users u ON wr.user_id = u.id
+            WHERE wr.status = 'pending'
+            ORDER BY wr.created_at ASC
+            """,
+        )
+    return [dict(r) for r in rows]
+
+async def process_withdrawal_request(request_id: int, status: str) -> bool:
+    """Process withdrawal request (approve or reject)"""
+    p = pool()
+    async with p.acquire() as conn:
+        if status == 'completed':
+            # Mark as completed
+            row = await conn.fetchrow(
+                """
+                UPDATE withdrawal_requests
+                SET status = 'completed', processed_at = NOW()
+                WHERE id = $1 AND status = 'pending'
+                RETURNING user_id, amount_minor
+                """,
+                request_id,
+            )
+            if row:
+                # Log completion (optional)
+                pass
+            return bool(row)
+        elif status == 'rejected':
+            # Refund to balance
+            refund_row = await conn.fetchrow(
+                """
+                UPDATE withdrawal_requests
+                SET status = 'rejected', processed_at = NOW()
+                WHERE id = $1 AND status = 'pending'
+                RETURNING user_id, amount_minor
+                """,
+                request_id,
+            )
+            if refund_row:
+                user_id = refund_row["user_id"]
+                amount_minor = refund_row["amount_minor"]
+                await conn.execute(
+                    """
+                    UPDATE users
+                    SET virtual_balance_minor = virtual_balance_minor + $2,
+                        updated_at = NOW()
+                    WHERE id = $1
+                    """,
+                    user_id,
+                    amount_minor,
+                )
+                # Log refund
+                await conn.execute(
+                    """
+                    INSERT INTO balance_transactions (user_id, amount_minor, transaction_type, description)
+                    VALUES ($1, $2, 'refunded', $3)
+                    """,
+                    user_id,
+                    amount_minor,
+                    f"Withdrawal refund for request #{request_id}",
+                )
+            return bool(refund_row)
+    return False

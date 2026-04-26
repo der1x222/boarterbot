@@ -137,17 +137,29 @@ def kb_editor_menu(is_verified: bool, lang: str | None = None) -> InlineKeyboard
     b.adjust(2, 2, 2, 1)
     return b.as_markup()
 
+def kb_balance(role: str, lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    lng = texts.normalize_lang(lang)
+
+    if role == "editor":
+        b.button(text=_tr(lng, "💰 Withdraw funds", "💰 Вивести кошти"), callback_data="balance:withdraw")
+
+    b.button(text=_tr(lng, "🏠 Menu", "🏠 Меню"), callback_data="common:menu")
+    b.adjust(1, 1)
+    return b.as_markup()
+
 def kb_profile(role: str, verification_status: str | None = None, lang: str | None = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     lng = texts.normalize_lang(lang)
 
-    if role == "editor" and verification_status != "verified":
-        b.button(text=_tr(lng, "✅ Verify", "✅ Верифікація"), callback_data="verify:start")
+    if role == "editor":
+        if verification_status != "verified":
+            b.button(text=_tr(lng, "✅ Verify", "✅ Верифікація"), callback_data="verify:start")
 
     b.button(text=_tr(lng, "🔁 Change role", "🔁 Змінити роль"), callback_data="profile:change_role")
     b.button(text=_lang_label("btn_settings", lng), callback_data="common:settings")
     b.button(text=_tr(lng, "🏠 Menu", "🏠 Меню"), callback_data="common:menu")
-    b.adjust(1, 1, 1)
+    b.adjust(1, 1, 1, 1)
     return b.as_markup()
 
 def kb_change_role_confirm(lang: str | None = None) -> InlineKeyboardMarkup:

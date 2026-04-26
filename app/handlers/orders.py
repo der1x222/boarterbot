@@ -1972,6 +1972,7 @@ async def revision_accept(call: CallbackQuery):
         currency=(order.get("currency") or "USD").lower(),
         customer_email=None,
         order_title=f"Revision for order #{order_id}",
+        is_revision=True,
     )
 
     if payment_link:
@@ -2182,9 +2183,6 @@ async def order_complete_confirm(call: CallbackQuery):
     if not ok:
         await call.answer(_t(user, "Failed to confirm completion.", "Не вдалося підтвердити завершення."), show_alert=True)
         return
-
-    # Complete order and credit editor (if no disputes)
-    await complete_order_and_credit_editor(order_id)
 
     # Notify editor
     editor = await get_user_by_id(order["editor_id"])
