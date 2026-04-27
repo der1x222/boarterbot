@@ -445,6 +445,55 @@ async def edit_editor_price_save(message: Message, state: FSMContext):
         reply_markup=kb_edit_editor_menu(user.language)
     )
 
+@router.callback_query(F.data == "edit:editor:avg_price")
+async def edit_editor_avg_price_start(call: CallbackQuery, state: FSMContext):
+    await state.set_state(EditEditor.waiting_avg_price)
+    user = await get_user_by_telegram_id(call.from_user.id)
+    lang = user.language if user else None
+    await call.answer()
+    await send_clean_from_call(
+        call,
+        state,
+        texts.tr(lang, "Enter average price per video (number in $):", "Введіть середню ціну за ролик (число в $):"),
+        reply_markup=kb_nav_menu_help(back="edit:editor_menu", lang=lang)
+    )
+
+@router.message(EditEditor.waiting_avg_price)
+async def edit_editor_avg_price_save(message: Message, state: FSMContext):
+    user = await get_user_by_telegram_id(message.from_user.id)
+    p = await get_editor_profile(user.id)
+    if not user or not p:
+        return
+
+    raw = (message.text or "").strip()
+    await safe_delete_message(message)
+
+    if not raw.isdigit():
+        await send_clean(
+            message,
+            state,
+            texts.tr(user.language, "Average price must be a number. Example: 50", "Середня ціна має бути числом. Приклад: 50"),
+            reply_markup=kb_nav_menu_help(back="edit:editor_menu", lang=user.language)
+        )
+        return
+
+    await upsert_editor_profile(
+        user_id=user.id,
+        name=p.get("name") or "",
+        skills=p.get("skills") or "",
+        price_from_minor=int(p.get("price_from_minor") or 0),
+        portfolio_url=p.get("portfolio_url") or "",
+        avg_price_minor=int(raw) * 100,
+    )
+
+    await state.clear()
+    await send_clean(
+        message,
+        state,
+        texts.tr(user.language, "✅ Average price updated.\n\nWhat would you like to change next?", "✅ Середню ціну оновлено.\n\nЩо хочете змінити далі?"),
+        reply_markup=kb_edit_editor_menu(user.language)
+    )
+
 @router.callback_query(F.data == "edit:editor:portfolio")
 async def edit_editor_portfolio_start(call: CallbackQuery, state: FSMContext):
     await state.set_state(EditEditor.waiting_portfolio)

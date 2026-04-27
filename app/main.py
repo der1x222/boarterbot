@@ -251,6 +251,7 @@ async def main():
     await run_migration_file("migrations/012_orders_agreed_price.sql")
     await run_migration_file("migrations/013_deal_messages.sql")
     await run_migration_file("migrations/014_balance_and_revisions.sql")
+    await run_migration_file("migrations/015_reviews_and_profile_stats.sql")
 
     global bot
     bot = Bot(token=cfg.bot_token, parse_mode=ParseMode.HTML)

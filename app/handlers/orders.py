@@ -7,11 +7,12 @@ import re
 from urllib.parse import urlparse
 
 from app.models import get_user_by_telegram_id, get_user_by_id, list_moderators
-from app.keyboards import kb_nav_menu_help, kb_orders_list, kb_order_detail, kb_deal_menu, kb_mod_deal_menu, kb_editor_order_detail, kb_deal_chat_controls, kb_dispute_join, kb_dispute_controls, kb_deal_chat_menu, kb_proposal_actions, kb_deal_chat_link_controls, kb_deadline_quick, kb_revision_request_menu, kb_revision_response_menu, kb_order_completion_menu, kb_client_completion_menu, kb_order_category, kb_order_platform, kb_order_reference_controls, kb_order_category_edit, kb_order_platform_edit, kb_order_reference_controls_edit, kb_order_create_form, kb_order_materials_controls, kb_order_materials_controls_edit
+from app.keyboards import kb_nav_menu_help, kb_orders_list, kb_order_detail, kb_deal_menu, kb_mod_deal_menu, kb_editor_order_detail, kb_deal_chat_controls, kb_dispute_join, kb_dispute_controls, kb_deal_chat_menu, kb_proposal_actions, kb_deal_chat_link_controls, kb_deadline_quick, kb_revision_request_menu, kb_revision_response_menu, kb_order_completion_menu, kb_client_completion_menu, kb_order_category, kb_order_platform, kb_order_reference_controls, kb_order_category_edit, kb_order_platform_edit, kb_order_reference_controls_edit, kb_order_create_form, kb_order_materials_controls, kb_order_materials_controls_edit, kb_review_rating, kb_review_comment_skip
 from app.menu_utils import get_menu_markup_for_user
-from app.states import CreateOrder, DealChange, EditOrder, EditorProposal, DealChat, DisputeChat, DisputeOpenReason, ChatRequest, RevisionRequest, RevisionCounter
+from app.states import CreateOrder, DealChange, EditOrder, EditorProposal, DealChat, DisputeChat, DisputeOpenReason, ChatRequest, RevisionRequest, RevisionCounter, ReviewFlow
 from app.order_repo import create_order, list_orders_for_client, get_order_for_client, accept_order, get_order_by_id, update_order_if_open, open_dispute, set_dispute_agree, close_dispute, set_payment_link, create_deal_message, get_deal_messages, request_revision, respond_to_revision, set_revision_payment_link, mark_revision_paid, mark_final_video_sent, confirm_order_completion, complete_order_and_credit_editor
-from app.profile_repo import get_editor_profile
+from app.profile_repo import get_editor_profile, get_editor_profile_card, get_client_profile_card
+from app.review_repo import create_or_update_review
 from app.payment_api import create_payment_link
 from app.moderation_utils import is_moderator_telegram_id, contains_forbidden_words, normalize_text
 from app.moderation_repo import create_held_message
@@ -207,6 +208,37 @@ def _parse_structured_description(description: str) -> dict:
             ref = line.replace("Reference (YouTube): ", "", 1).strip()
             parsed["reference_url"] = "" if ref.lower() == "no reference" else ref
     return parsed
+
+def _format_rating_summary(lang: str | None, avg_rating, review_count: int) -> str:
+    if not review_count or avg_rating is None:
+        return _tl(lang, "No reviews yet", "Ще немає відгуків")
+    return _tl(lang, f"{float(avg_rating):.1f}/5 ({review_count} reviews)", f"{float(avg_rating):.1f}/5 ({review_count} відгуків)")
+
+def _format_member_since(lang: str | None, joined_at) -> str:
+    if not joined_at:
+        return "-"
+    days = max((datetime.utcnow().replace(tzinfo=joined_at.tzinfo) - joined_at).days, 0)
+    if days < 30:
+        return _tl(lang, f"{days} days", f"{days} днів")
+    if days < 365:
+        months = max(days // 30, 1)
+        return _tl(lang, f"{months} months", f"{months} міс.")
+    years = max(days // 365, 1)
+    return _tl(lang, f"{years} years", f"{years} р.")
+
+async def _build_editor_info_text(editor_id: int, lang: str | None) -> str:
+    profile = await get_editor_profile_card(editor_id)
+    if not profile:
+        return _tl(lang, "Editor profile is unavailable.", "Профіль монтажера недоступний.")
+    return (
+        f"{_tl(lang, 'Editor info', 'Інформація про монтажера')}\n"
+        f"{_tl(lang, 'Name', 'Імʼя')}: {profile.get('name') or profile.get('display_name') or '—'}\n"
+        f"{_tl(lang, 'Skills', 'Навички')}: {profile.get('skills') or '—'}\n"
+        f"{_tl(lang, 'Rating', 'Рейтинг')}: {_format_rating_summary(lang, profile.get('avg_rating'), int(profile.get('review_count') or 0))}\n"
+        f"{_tl(lang, 'Completed orders', 'Успішно виконано замовлень')}: {int(profile.get('completed_orders') or 0)}\n"
+        f"{_tl(lang, 'Average price per video', 'Середня ціна за ролик')}: {int(profile.get('avg_price_minor') or 0) / 100:.2f} USD\n"
+        f"{_tl(lang, 'With us', 'З нами')}: {_format_member_since(lang, profile.get('joined_at'))}"
+    )
 async def _finalize_create_order(user, state: FSMContext, bot, chat_id: int, deadline_at: datetime):
     data = await state.get_data()
     description = _build_order_description(data, user.language)
@@ -314,7 +346,7 @@ async def editor_order_view(call: CallbackQuery, state: FSMContext):
             call,
             state,
             text,
-            reply_markup=kb_editor_order_detail(order_id, offset, total, user.language),
+            reply_markup=kb_editor_order_detail(order_id, order.get("client_id"), offset, total, user.language),
         )
         await call.answer()
     except Exception as e:
@@ -1519,7 +1551,7 @@ async def order_details_for_editor(call: CallbackQuery):
         f"{_t(user, 'Deadline', 'Термін')}: {deadline_label}"
     )
 
-    await call.message.answer(text, reply_markup=kb_editor_order_detail(order_id, user.language))
+    await call.message.answer(text, reply_markup=kb_editor_order_detail(order_id, order.get("client_id"), 0, 0, user.language))
     await call.answer()
 
 
@@ -1582,9 +1614,10 @@ async def order_chat_request_text(message: Message, state: FSMContext):
     if client:
         editor_name = user.display_name or user.username or f"id:{user.telegram_id}"
         editor_username = f"@{user.username}" if user.username else ""
+        editor_info = await _build_editor_info_text(user.id, client.language)
         await message.bot.send_message(
             client.telegram_id,
-            _t(client, f"Chat request for order #{order_id} from {editor_name} {editor_username}:\n{text}", f"Запит на чат по замовленню #{order_id} від {editor_name} {editor_username}:\n{text}"),
+            _t(client, f"Chat request for order #{order_id} from {editor_name} {editor_username}:\n{text}\n\n{editor_info}", f"Запит на чат по замовленню #{order_id} від {editor_name} {editor_username}:\n{text}\n\n{editor_info}"),
         )
 
     await state.clear()
@@ -1669,11 +1702,12 @@ async def order_proposal_comment(message: Message, state: FSMContext):
         price = f"{int(data.get('proposal_price') or 0) / 100:.2f} {order.get('currency') or 'USD'}"
         editor_name = user.display_name or user.username or f"id:{user.telegram_id}"
         editor_username = f"@{user.username}" if user.username else ""
+        editor_info = await _build_editor_info_text(user.id, client.language)
         await message.bot.send_message(
             client.telegram_id,
             _t(client, f"Proposal for order #{order_id} from {editor_name} {editor_username}:\n", f"Пропозиція до замовлення #{order_id} від {editor_name} {editor_username}:\n")
             + _t(client, f"Price: {price}\n", f"Ціна: {price}\n")
-            + _t(client, f"Comment: {comment}", f"Коментар: {comment}"),
+            + _t(client, f"Comment: {comment}\n\n{editor_info}", f"Коментар: {comment}\n\n{editor_info}"),
             reply_markup=kb_proposal_actions(order_id, user.id, int(data.get("proposal_price") or 0), client.language),
         )
 
@@ -1722,7 +1756,7 @@ async def proposal_accept(call: CallbackQuery):
         await call.bot.send_message(
             editor.telegram_id,
             _t(editor, f"Order #{order_id} accepted by the client.", f"Замовлення #{order_id} прийнято клієнтом."),
-            reply_markup=kb_deal_menu(order_id, editor.language, "editor", "accepted"),
+            reply_markup=kb_deal_menu(order_id, editor.language, "editor", "accepted", False, False, order.get("client_id")),
         )
 
     payment_link = None
@@ -2191,9 +2225,106 @@ async def order_complete_confirm(call: CallbackQuery):
             editor.telegram_id,
             _t(editor, f"✅ Client confirmed completion of order #{order_id}. Funds credited to your balance.", f"✅ Замовник підтвердив завершення замовлення #{order_id}. Кошти зараховані на ваш баланс.")
         )
+        await call.bot.send_message(
+            editor.telegram_id,
+            _t(editor, f"Please rate the client for order #{order_id}.", f"Будь ласка, оцініть замовника за замовлення #{order_id}."),
+            reply_markup=kb_review_rating(order_id, user.id, editor.language),
+        )
+
+    if editor:
+        await call.bot.send_message(
+            user.telegram_id,
+            _t(user, f"Please rate the editor for order #{order_id}.", f"Будь ласка, оцініть монтажера за замовлення #{order_id}."),
+            reply_markup=kb_review_rating(order_id, editor.id, user.language),
+        )
 
     await call.message.edit_text(_t(user, "✅ Order completed successfully!", "✅ Замовлення успішно завершено!"))
     await call.answer()
+
+@router.callback_query(F.data.startswith("review:rate:"))
+async def review_rate_start(call: CallbackQuery, state: FSMContext):
+    user = await get_user_by_telegram_id(call.from_user.id)
+    if not user:
+        await call.answer(_tl(None, "Type /start", "Напишіть /start"), show_alert=True)
+        return
+
+    parts = call.data.split(":")
+    if len(parts) != 5:
+        await call.answer(_t(user, "Invalid review data.", "Некоректні дані відгуку."), show_alert=True)
+        return
+
+    try:
+        order_id = int(parts[2])
+        reviewee_id = int(parts[3])
+        rating = int(parts[4])
+    except ValueError:
+        await call.answer(_t(user, "Invalid review data.", "Некоректні дані відгуку."), show_alert=True)
+        return
+
+    order = await get_order_by_id(order_id)
+    if not order or order.get("status") != "completed":
+        await call.answer(_t(user, "Order is not completed yet.", "Замовлення ще не завершене."), show_alert=True)
+        return
+
+    allowed_reviewee = order.get("editor_id") if user.id == order.get("client_id") else order.get("client_id")
+    if user.id not in (order.get("client_id"), order.get("editor_id")) or reviewee_id != allowed_reviewee or not (1 <= rating <= 5):
+        await call.answer(_t(user, "You cannot leave this review.", "Ви не можете залишити цей відгук."), show_alert=True)
+        return
+
+    await state.clear()
+    await state.set_state(ReviewFlow.waiting_comment)
+    await state.update_data(order_id=order_id, reviewee_id=reviewee_id, rating=rating)
+    await call.answer()
+    await call.message.answer(
+        _t(user, "Write a short review comment or skip this step.", "Напишіть короткий коментар до відгуку або пропустіть цей крок."),
+        reply_markup=kb_review_comment_skip(order_id, reviewee_id, rating, user.language),
+    )
+
+@router.callback_query(F.data.startswith("review:skip:"))
+async def review_skip_comment(call: CallbackQuery, state: FSMContext):
+    user = await get_user_by_telegram_id(call.from_user.id)
+    if not user:
+        await call.answer(_tl(None, "Type /start", "Напишіть /start"), show_alert=True)
+        return
+
+    parts = call.data.split(":")
+    if len(parts) != 5:
+        await call.answer(_t(user, "Invalid review data.", "Некоректні дані відгуку."), show_alert=True)
+        return
+
+    try:
+        order_id = int(parts[2])
+        reviewee_id = int(parts[3])
+        rating = int(parts[4])
+    except ValueError:
+        await call.answer(_t(user, "Invalid review data.", "Некоректні дані відгуку."), show_alert=True)
+        return
+
+    await create_or_update_review(order_id, user.id, reviewee_id, rating, "")
+    await state.clear()
+    await call.answer(_t(user, "Review saved.", "Відгук збережено."), show_alert=True)
+    await call.message.answer(_t(user, "Thanks for your review.", "Дякуємо за ваш відгук."))
+
+@router.message(ReviewFlow.waiting_comment)
+async def review_comment_save(message: Message, state: FSMContext):
+    user = await get_user_by_telegram_id(message.from_user.id)
+    if not user:
+        return
+
+    data = await state.get_data()
+    order_id = int(data.get("order_id") or 0)
+    reviewee_id = int(data.get("reviewee_id") or 0)
+    rating = int(data.get("rating") or 0)
+    comment = (message.text or "").strip()
+
+    if not order_id or not reviewee_id or not (1 <= rating <= 5):
+        await state.clear()
+        await message.answer(_t(user, "Review session expired.", "Сесію відгуку завершено."))
+        return
+
+    await create_or_update_review(order_id, user.id, reviewee_id, rating, comment)
+    await state.clear()
+    await message.answer(_t(user, "Review saved. Thank you!", "Відгук збережено. Дякуємо!"))
 
 @router.callback_query(F.data.startswith("deal:change:"))
 async def deal_change_start(call: CallbackQuery, state: FSMContext):
@@ -2280,7 +2411,7 @@ async def order_menu_open(call: CallbackQuery):
         await call.answer(_t(user, "Order not found.", "Замовлення не знайдено."), show_alert=True)
         return
 
-    await call.message.answer(_t(user, "Order menu:", "Меню замовлення:"), reply_markup=kb_deal_menu(order_id, user.language, "editor", order.get("status"), order.get("final_video_sent", False), order.get("revision_requested", False)))
+    await call.message.answer(_t(user, "Order menu:", "Меню замовлення:"), reply_markup=kb_deal_menu(order_id, user.language, "editor", order.get("status"), order.get("final_video_sent", False), order.get("revision_requested", False), order.get("client_id")))
     await call.answer()
 
 # ---------- deal chat & dispute ----------
@@ -2406,7 +2537,8 @@ async def deal_menu_open(call: CallbackQuery):
         )
     else:
         user_role = "client" if order.get("client_id") == user.id else "editor"
-        await call.message.answer(_t(user, "Order menu:", "Меню замовлення:"), reply_markup=kb_deal_menu(order_id, user.language, user_role, order.get("status"), order.get("final_video_sent", False), order.get("revision_requested", False)))
+        counterpart_id = order.get("editor_id") if user_role == "client" else order.get("client_id")
+        await call.message.answer(_t(user, "Order menu:", "Меню замовлення:"), reply_markup=kb_deal_menu(order_id, user.language, user_role, order.get("status"), order.get("final_video_sent", False), order.get("revision_requested", False), counterpart_id))
 
 @router.callback_query(F.data.startswith("deal:chat:exit:"))
 async def deal_chat_exit(call: CallbackQuery, state: FSMContext):
@@ -2691,7 +2823,10 @@ async def dispute_exit(call: CallbackQuery, state: FSMContext):
 
     await state.clear()
     await call.answer()
-    await call.message.answer(_t(user, "You left the dispute.", "Ви вийшли зі спору."), reply_markup=kb_deal_menu(order_id, user.language, user_role, order.get("status") if order else None, order.get("final_video_sent", False) if order else False, order.get("revision_requested", False) if order else False))
+    counterpart_id = None
+    if order:
+        counterpart_id = order.get("editor_id") if user_role == "client" else order.get("client_id")
+    await call.message.answer(_t(user, "You left the dispute.", "Ви вийшли зі спору."), reply_markup=kb_deal_menu(order_id, user.language, user_role, order.get("status") if order else None, order.get("final_video_sent", False) if order else False, order.get("revision_requested", False) if order else False, counterpart_id))
 
 @router.callback_query(F.data.startswith("deal:dispute:join:"))
 async def dispute_join(call: CallbackQuery, state: FSMContext):

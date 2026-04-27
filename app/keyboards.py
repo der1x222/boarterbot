@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+﻿from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from app import texts
 
@@ -240,6 +240,7 @@ def kb_edit_editor_menu(lang: str | None = None) -> InlineKeyboardMarkup:
     b.button(text=_tr(lang, "Change name", "Змінити ім'я"), callback_data="edit:editor:name")
     b.button(text=_tr(lang, "Change skills", "Змінити навички"), callback_data="edit:editor:skills")
     b.button(text=_tr(lang, "Change price", "Змінити ціну"), callback_data="edit:editor:price")
+    b.button(text=_tr(lang, "Change average price", "Змінити середню ціну"), callback_data="edit:editor:avg_price")
     b.button(text=_tr(lang, "Change portfolio", "Змінити портфоліо"), callback_data="edit:editor:portfolio")
     b.button(text=_tr(lang, "Back to profile", "До профілю"), callback_data="editor:profile")
     b.button(text=_tr(lang, "Menu", "Меню"), callback_data="common:menu")
@@ -353,13 +354,15 @@ def kb_editor_my_orders_list(orders: list[dict]) -> InlineKeyboardMarkup:
     b.adjust(*sizes)
     return b.as_markup()
 
-def kb_editor_order_detail(order_id: int, offset: int = 0, total: int = 0, lang: str | None = None) -> InlineKeyboardMarkup:
+def kb_editor_order_detail(order_id: int, client_id: int | None = None, offset: int = 0, total: int = 0, lang: str | None = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.button(text=_tr(lang, "💬 Chat", "💬 Чат"), callback_data=f"editor:order_chat:{order_id}")
     b.button(text=_tr(lang, "📝 Apply", "📝 Откликнуться"), callback_data=f"editor:order_apply:{order_id}")
     b.button(text=_tr(lang, "💰 Offer price", "💰 Запропонувати ціну"), callback_data=f"editor:order_propose:{order_id}")
+    if client_id:
+        b.button(text=_tr(lang, "👤 Client profile", "👤 Профіль замовника"), callback_data=f"profile:view:{client_id}:open:{order_id}")
     
-    b.adjust(1, 2)
+    b.adjust(1, 2, 1)
     
     # Back button to list
     b.row(InlineKeyboardButton(text=_tr(lang, "⬅️ Back to list", "⬅️ До списку"), callback_data=f"editor:orders:page:{offset}"))
@@ -367,7 +370,7 @@ def kb_editor_order_detail(order_id: int, offset: int = 0, total: int = 0, lang:
     
     return b.as_markup()
 
-def kb_deal_menu(order_id: int, lang: str | None = None, user_role: str = None, order_status: str = None, final_video_sent: bool = False, revision_requested: bool = False) -> InlineKeyboardMarkup:
+def kb_deal_menu(order_id: int, lang: str | None = None, user_role: str = None, order_status: str = None, final_video_sent: bool = False, revision_requested: bool = False, counterpart_id: int | None = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.button(text=_tr(lang, "Chat", "Чат"), callback_data=f"deal:chat:{order_id}")
 
@@ -378,9 +381,13 @@ def kb_deal_menu(order_id: int, lang: str | None = None, user_role: str = None, 
             b.button(text=_tr(lang, "Request revisions", "Запросити правки"), callback_data=f"order:revision:request:{order_id}")
         b.button(text=_tr(lang, "Confirm completion", "Підтвердити завершення"), callback_data=f"order:complete:confirm:{order_id}")
 
+    if counterpart_id:
+        label = _tr(lang, "Editor profile", "Профіль монтажера") if user_role == "client" else _tr(lang, "Client profile", "Профіль замовника")
+        b.button(text=label, callback_data=f"profile:view:{counterpart_id}:deal:{order_id}")
+
     b.button(text=_tr(lang, "Change", "Змінити"), callback_data=f"deal:change:{order_id}")
     b.button(text=_tr(lang, "Support", "Підтримка"), callback_data="common:support")
-    b.adjust(2, 2)
+    b.adjust(2, 2, 1)
     return b.as_markup()
 
 def kb_deal_chat_menu(order_id: int, lang: str | None = None) -> InlineKeyboardMarkup:
@@ -458,10 +465,25 @@ def kb_proposal_actions(
 ) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     price_part = f":{int(proposal_price_minor)}" if proposal_price_minor is not None else ""
+    b.button(text=_tr(lang, "View profile", "Переглянути профіль"), callback_data=f"profile:view:{editor_id}:proposal:{order_id}")
     b.button(text=_tr(lang, "Start chat", "Почати чат"), callback_data=f"proposal:chat:{order_id}:{editor_id}")
     b.button(text=_tr(lang, "Accept", "Прийняти"), callback_data=f"proposal:accept:{order_id}:{editor_id}{price_part}")
     b.button(text=_tr(lang, "Reject", "Відхилити"), callback_data=f"proposal:reject:{order_id}:{editor_id}")
-    b.adjust(1, 1, 1)
+    b.adjust(1, 1, 1, 1)
+    return b.as_markup()
+
+def kb_review_rating(order_id: int, reviewee_id: int, lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    for rating in range(5, 0, -1):
+        b.button(text=f"{rating} ⭐", callback_data=f"review:rate:{order_id}:{reviewee_id}:{rating}")
+    b.adjust(5)
+    return b.as_markup()
+
+def kb_review_comment_skip(order_id: int, reviewee_id: int, rating: int, lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text=_tr(lang, "Skip comment", "Пропустити коментар"), callback_data=f"review:skip:{order_id}:{reviewee_id}:{rating}")
+    b.button(text=_tr(lang, "Menu", "Меню"), callback_data="common:menu")
+    b.adjust(1, 1)
     return b.as_markup()
 
 # ---------- Balance menu ----------

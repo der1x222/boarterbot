@@ -18,6 +18,7 @@ from app.keyboards import (
 )
 from app.profile_repo import get_editor_profile
 from app.order_repo import list_open_orders, count_open_orders, list_orders_for_editor, list_deals_for_client, list_deals_for_editor, get_user_balance, list_balance_transactions, withdraw_balance, set_user_withdrawal_verification
+from app.review_repo import list_received_reviews
 from app import texts
 
 router = Router()
@@ -77,6 +78,45 @@ async def send_clean_from_message(
     msg = await message.answer(text, reply_markup=reply_markup)
     await set_last_bot_message(state, msg.message_id)
     return msg
+
+@router.callback_query(F.data == "editor:my_proposals")
+async def editor_reviews_menu(call: CallbackQuery, state: FSMContext):
+    user = await get_user_by_telegram_id(call.from_user.id)
+    if not user:
+        await call.answer(texts.tr(None, "Type /start", "Напишіть /start"), show_alert=True)
+        return
+
+    reviews = await list_received_reviews(user.id, limit=10)
+    if not reviews:
+        await send_clean_from_call(
+            call,
+            state,
+            texts.tr(user.language, "📬 No reviews yet.", "📬 Відгуків поки немає."),
+            reply_markup=await get_menu_markup_for_user(user),
+        )
+        await call.answer()
+        return
+
+    items = []
+    for review in reviews:
+        reviewer_name = review.get("reviewer_display_name") or review.get("reviewer_username") or "User"
+        comment = (review.get("comment") or "").strip() or texts.tr(user.language, "No comment", "Без коментаря")
+        created_at = review.get("created_at")
+        created_label = created_at.strftime("%d.%m.%Y") if created_at else "-"
+        stars = "⭐" * int(review.get("rating") or 0)
+        items.append(
+            f"#{review.get('order_id')} • {review.get('order_title') or '-'}\n"
+            f"{stars} • {reviewer_name} • {created_label}\n"
+            f"{comment}"
+        )
+
+    await send_clean_from_call(
+        call,
+        state,
+        texts.tr(user.language, "📬 My reviews:\n\n", "📬 Мої відгуки:\n\n") + "\n\n".join(items),
+        reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
+    )
+    await call.answer()
 
 @router.callback_query(
     F.data.startswith(("client:", "editor:", "common:", "balance:")) &

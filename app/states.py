@@ -4,6 +4,7 @@ class RegEditor(StatesGroup):
     waiting_name = State()
     waiting_skills = State()
     waiting_price = State()
+    waiting_avg_price = State()
     waiting_skill_level = State()
     waiting_portfolio = State()
     waiting_experience = State()
@@ -18,6 +19,7 @@ class EditEditor(StatesGroup):
     waiting_name = State()
     waiting_skills = State()
     waiting_price = State()
+    waiting_avg_price = State()
     waiting_portfolio = State()
 
 class EditClient(StatesGroup):
@@ -86,6 +88,9 @@ class DisputeOpenReason(StatesGroup):
 
 class VerifyChat(StatesGroup):
     chatting = State()
+
+class ReviewFlow(StatesGroup):
+    waiting_comment = State()
 
 class ModerationSearch(StatesGroup):
     waiting_query = State()
