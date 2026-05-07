@@ -318,8 +318,8 @@ async def editor_order_view(call: CallbackQuery, state: FSMContext):
             await call.answer(texts.t("order_not_found", user.language), show_alert=True)
             return
         
-        # Check if order is still open
-        if order.get("status") != "open":
+        # Check if order is still available
+        if order.get("status") != "open" or order.get("editor_id") is not None:
             await call.answer(texts.t("order_no_longer_available", user.language), show_alert=True)
             return
         
@@ -328,7 +328,8 @@ async def editor_order_view(call: CallbackQuery, state: FSMContext):
         description = order.get("description", "?")
         budget = order.get("budget_minor", 0) / 100
         currency = order.get("currency", "USD")
-        deadline = order.get("deadline_at", "?")
+        deadline_value = order.get("deadline_at")
+        deadline = deadline_value.strftime("%Y-%m-%d %H:%M") if deadline_value else "-"
         
         budget_label = texts.t("order_budget", user.language)
         deadline_label = texts.t("order_deadline", user.language)
@@ -367,9 +368,9 @@ async def editor_order_apply(call: CallbackQuery, state: FSMContext):
             await call.answer(texts.t("order_invalid", user.language), show_alert=True)
             return
         
-        # Check if editor already applied
+        # Check if order exists and is available
         order = await get_order_by_id(order_id)
-        if not order or order.get("status") != "open":
+        if not order or order.get("status") != "open" or order.get("editor_id") is not None:
             await call.answer(texts.t("order_not_available", user.language), show_alert=True)
             return
         
@@ -402,9 +403,9 @@ async def editor_order_chat(call: CallbackQuery, state: FSMContext):
             await call.answer(texts.t("order_invalid", user.language), show_alert=True)
             return
         
-        # Check if order exists and is open
+        # Check if order exists and is available
         order = await get_order_by_id(order_id)
-        if not order or order.get("status") != "open":
+        if not order or order.get("status") != "open" or order.get("editor_id") is not None:
             await call.answer(texts.t("order_not_available", user.language), show_alert=True)
             return
         
@@ -426,9 +427,9 @@ async def editor_order_propose(call: CallbackQuery, state: FSMContext):
             await call.answer(texts.tr(user.language, "Invalid order.", "Невірний заказ."), show_alert=True)
             return
         
-        # Check if order exists and is open
+        # Check if order exists and is available
         order = await get_order_by_id(order_id)
-        if not order or order.get("status") != "open":
+        if not order or order.get("status") != "open" or order.get("editor_id") is not None:
             await call.answer(texts.tr(user.language, "Order not available.", "Заказ недоступний."), show_alert=True)
             return
         

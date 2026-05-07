@@ -347,7 +347,9 @@ def kb_editor_orders_list(orders: list[dict], offset: int = 0, total: int = 0, l
             title = title[:17] + '...'
         budget = o.get('budget_minor', 0) / 100
         currency = (o.get('currency') or 'USD').upper()
-        b.button(text=f"📄 {title}\n💰 {budget} {currency}", callback_data=f"editor:order_view:{o['id']}")
+        deadline_value = o.get('deadline_at')
+        deadline_label = deadline_value.strftime("%Y-%m-%d") if deadline_value else "-"
+        b.button(text=f"📄 {title}\n💰 {budget} {currency} • ⏱ {deadline_label}", callback_data=f"editor:order_view:{o['id']}")
     
     # Pagination and menu buttons
     nav_buttons = []
