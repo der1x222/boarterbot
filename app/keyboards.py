@@ -1,5 +1,6 @@
 ﻿from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from app import texts
 
 def _lang_label(label_key: str, lang: str | None) -> str:
@@ -7,6 +8,27 @@ def _lang_label(label_key: str, lang: str | None) -> str:
 
 def _tr(lang: str | None, en: str, ua: str) -> str:
     return texts.tr(lang, en, ua)
+
+def deal_chat_button_texts(
+    lang: str | None = None,
+    *,
+    is_moderator: bool = False,
+    link_mode: bool = False,
+) -> dict[str, str]:
+    buttons = {
+        "menu": _tr(lang, "Menu", "Меню"),
+        "dispute": _tr(lang, "Dispute", "Спір"),
+        "send_link": _tr(lang, "Send link", "Надіслати посилання"),
+        "order": _tr(lang, "To order", "До замовлення"),
+        "help": _tr(lang, "Help / report", "Допомога / скарга"),
+        "back_to_chat": _tr(lang, "Back to chat", "Назад до чату"),
+    }
+    if is_moderator:
+        buttons["help"] = _tr(lang, "Notify team", "Покликати команду")
+    return buttons
+
+def kb_remove_reply() -> ReplyKeyboardRemove:
+    return ReplyKeyboardRemove()
 
 def kb_choose_role(lang: str | None = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
@@ -398,21 +420,35 @@ def kb_deal_chat_menu(order_id: int, lang: str | None = None) -> InlineKeyboardM
     b.adjust(1, 1, 1)
     return b.as_markup()
 
-def kb_deal_chat_controls(order_id: int, lang: str | None = None) -> InlineKeyboardMarkup:
-    b = InlineKeyboardBuilder()
-    b.button(text=_tr(lang, "Send link", "Надіслати посилання"), callback_data=f"deal:chat:link:{order_id}")
-    b.button(text=_tr(lang, "Exit chat", "Вийти з чату"), callback_data=f"deal:chat:exit:{order_id}")
-    b.button(text=_tr(lang, "Dispute", "Спір"), callback_data=f"deal:dispute:{order_id}")
-    b.button(text=_tr(lang, "To order menu", "До меню замовлення"), callback_data=f"deal:menu:{order_id}")
-    b.adjust(1, 1, 1, 1)
-    return b.as_markup()
+def kb_deal_chat_controls(lang: str | None = None, *, is_moderator: bool = False) -> ReplyKeyboardMarkup:
+    labels = deal_chat_button_texts(lang, is_moderator=is_moderator)
+    rows = [
+        [KeyboardButton(text=labels["menu"]), KeyboardButton(text=labels["dispute"])],
+        [KeyboardButton(text=labels["send_link"]), KeyboardButton(text=labels["order"])],
+    ]
+    if not is_moderator:
+        rows.append([KeyboardButton(text=labels["help"])])
+    return ReplyKeyboardMarkup(
+        keyboard=rows,
+        resize_keyboard=True,
+        selective=True,
+        input_field_placeholder=_tr(lang, "Write a message…", "Напишіть повідомлення…"),
+    )
 
-def kb_deal_chat_link_controls(order_id: int, lang: str | None = None) -> InlineKeyboardMarkup:
-    b = InlineKeyboardBuilder()
-    b.button(text=_tr(lang, "Back to chat", "Назад до чату"), callback_data=f"deal:chat:start:{order_id}")
-    b.button(text=_tr(lang, "To order menu", "До меню замовлення"), callback_data=f"deal:menu:{order_id}")
-    b.adjust(1, 1)
-    return b.as_markup()
+def kb_deal_chat_link_controls(lang: str | None = None, *, is_moderator: bool = False) -> ReplyKeyboardMarkup:
+    labels = deal_chat_button_texts(lang, is_moderator=is_moderator, link_mode=True)
+    rows = [
+        [KeyboardButton(text=labels["menu"]), KeyboardButton(text=labels["dispute"])],
+        [KeyboardButton(text=labels["back_to_chat"]), KeyboardButton(text=labels["order"])],
+    ]
+    if not is_moderator:
+        rows.append([KeyboardButton(text=labels["help"])])
+    return ReplyKeyboardMarkup(
+        keyboard=rows,
+        resize_keyboard=True,
+        selective=True,
+        input_field_placeholder=_tr(lang, "Send one allowed link…", "Надішліть одне дозволене посилання…"),
+    )
 
 def kb_mod_deal_menu(order_id: int, is_dispute: bool, payment_status: str | None = None, lang: str | None = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()

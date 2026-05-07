@@ -7,7 +7,7 @@ import re
 from urllib.parse import urlparse
 
 from app.models import get_user_by_telegram_id, get_user_by_id, list_moderators
-from app.keyboards import kb_nav_menu_help, kb_orders_list, kb_order_detail, kb_deal_menu, kb_mod_deal_menu, kb_editor_order_detail, kb_deal_chat_controls, kb_dispute_join, kb_dispute_controls, kb_deal_chat_menu, kb_proposal_actions, kb_deal_chat_link_controls, kb_deadline_quick, kb_revision_request_menu, kb_revision_response_menu, kb_order_completion_menu, kb_client_completion_menu, kb_order_category, kb_order_platform, kb_order_reference_controls, kb_order_category_edit, kb_order_platform_edit, kb_order_reference_controls_edit, kb_order_create_form, kb_order_materials_controls, kb_order_materials_controls_edit, kb_review_rating, kb_review_comment_skip
+from app.keyboards import kb_nav_menu_help, kb_orders_list, kb_order_detail, kb_deal_menu, kb_mod_deal_menu, kb_editor_order_detail, kb_deal_chat_controls, kb_dispute_join, kb_dispute_controls, kb_deal_chat_menu, kb_proposal_actions, kb_deal_chat_link_controls, kb_deadline_quick, kb_revision_request_menu, kb_revision_response_menu, kb_order_completion_menu, kb_client_completion_menu, kb_order_category, kb_order_platform, kb_order_reference_controls, kb_order_category_edit, kb_order_platform_edit, kb_order_reference_controls_edit, kb_order_create_form, kb_order_materials_controls, kb_order_materials_controls_edit, kb_review_rating, kb_review_comment_skip, deal_chat_button_texts, kb_remove_reply
 from app.menu_utils import get_menu_markup_for_user
 from app.states import CreateOrder, DealChange, EditOrder, EditorProposal, DealChat, DisputeChat, DisputeOpenReason, ChatRequest, RevisionRequest, RevisionCounter, ReviewFlow
 from app.order_repo import create_order, list_orders_for_client, get_order_for_client, accept_order, get_order_by_id, update_order_if_open, open_dispute, set_dispute_agree, close_dispute, set_payment_link, create_deal_message, get_deal_messages, request_revision, respond_to_revision, set_revision_payment_link, mark_revision_paid, mark_final_video_sent, confirm_order_completion, complete_order_and_credit_editor
@@ -2462,6 +2462,79 @@ def _user_label(user) -> str:
     username = f"@{user.username}" if user.username else ""
     return f"{name} {username}".strip()
 
+def _chat_labels(user, *, is_moderator: bool = False, link_mode: bool = False) -> dict[str, str]:
+    return deal_chat_button_texts(getattr(user, "language", None), is_moderator=is_moderator, link_mode=link_mode)
+
+def _match_chat_button(text: str, expected: str | None) -> bool:
+    return bool(text and expected and text.strip().casefold() == expected.strip().casefold())
+
+def _deal_menu_markup_for_user(user, order: dict):
+    if is_moderator_telegram_id(user.telegram_id):
+        return kb_mod_deal_menu(
+            int(order["id"]),
+            order.get("status") == "dispute",
+            order.get("payment_status"),
+            user.language,
+        )
+    user_role = "client" if order.get("client_id") == user.id else "editor"
+    counterpart_id = order.get("editor_id") if user_role == "client" else order.get("client_id")
+    return kb_deal_menu(
+        int(order["id"]),
+        user.language,
+        user_role,
+        order.get("status"),
+        order.get("final_video_sent", False),
+        order.get("revision_requested", False),
+        counterpart_id,
+    )
+
+async def _remove_chat_keyboard(message: Message, user) -> None:
+    await message.answer(_t(user, "Chat controls hidden.", "Керування чатом приховано."), reply_markup=kb_remove_reply())
+
+async def _open_order_menu_from_chat(message: Message, state: FSMContext, user, order: dict) -> None:
+    await state.clear()
+    await _remove_chat_keyboard(message, user)
+    await message.answer(
+        _t(user, "Order menu:", "Меню замовлення:") if not is_moderator_telegram_id(user.telegram_id) else _t(user, "Deal menu:", "Меню угоди:"),
+        reply_markup=_deal_menu_markup_for_user(user, order),
+    )
+
+async def _open_main_menu_from_chat(message: Message, state: FSMContext, user) -> None:
+    await state.clear()
+    await _remove_chat_keyboard(message, user)
+    await message.answer(_t(user, "Menu:", "Меню:"), reply_markup=await get_menu_markup_for_user(user))
+
+async def _notify_chat_help(message: Message, user, order: dict) -> None:
+    moderators = await list_moderators()
+    if not moderators:
+        await message.answer(_t(user, "Moderators are not configured.", "Модератори не налаштовані."))
+        return
+
+    order_id = int(order["id"])
+    order_title = order.get("title") or f"#{order_id}"
+    for moderator in moderators:
+        try:
+            await message.bot.send_message(
+                moderator.telegram_id,
+                _t(
+                    moderator,
+                    f"Quiet help request in order #{order_id}.\nFrom: {_user_label(user)}\nOrder: {order_title}",
+                    f"Тихий запит на допомогу в замовленні #{order_id}.\nВід: {_user_label(user)}\nЗамовлення: {order_title}",
+                ),
+                reply_markup=kb_mod_deal_menu(order_id, order.get("status") == "dispute", order.get("payment_status"), moderator.language),
+            )
+        except:
+            pass
+
+    await message.answer(
+        _t(
+            user,
+            "Moderator quietly notified and can join the chat.",
+            "Модератора тихо покликано в чат.",
+        ),
+        reply_markup=kb_deal_chat_controls(user.language, is_moderator=is_moderator_telegram_id(user.telegram_id)),
+    )
+
 async def _activate_deal_chat_for_user(
     state: FSMContext,
     bot,
@@ -2529,16 +2602,10 @@ async def deal_menu_open(call: CallbackQuery):
         return
 
     await call.answer()
-    if is_moderator_telegram_id(call.from_user.id):
-        is_dispute = order.get("status") == "dispute"
-        await call.message.answer(
-            _t(user, "Deal menu:", "Меню угоди:"),
-            reply_markup=kb_mod_deal_menu(order_id, is_dispute, order.get("payment_status"), user.language),
-        )
-    else:
-        user_role = "client" if order.get("client_id") == user.id else "editor"
-        counterpart_id = order.get("editor_id") if user_role == "client" else order.get("client_id")
-        await call.message.answer(_t(user, "Order menu:", "Меню замовлення:"), reply_markup=kb_deal_menu(order_id, user.language, user_role, order.get("status"), order.get("final_video_sent", False), order.get("revision_requested", False), counterpart_id))
+    await call.message.answer(
+        _t(user, "Deal menu:", "Меню угоди:") if is_moderator_telegram_id(call.from_user.id) else _t(user, "Order menu:", "Меню замовлення:"),
+        reply_markup=_deal_menu_markup_for_user(user, order),
+    )
 
 @router.callback_query(F.data.startswith("deal:chat:exit:"))
 async def deal_chat_exit(call: CallbackQuery, state: FSMContext):
@@ -2554,7 +2621,8 @@ async def deal_chat_exit(call: CallbackQuery, state: FSMContext):
 
     await state.clear()
     await call.answer()
-    await call.message.answer(_t(user, "Chat closed.", "Чат закрито."), reply_markup=kb_deal_chat_menu(order_id, user.language))
+    await call.message.answer(_t(user, "Chat closed.", "Чат закрито."), reply_markup=kb_remove_reply())
+    await call.message.answer(_t(user, "Chat menu:", "Меню чату:"), reply_markup=kb_deal_chat_menu(order_id, user.language))
 
 @router.callback_query(F.data.startswith("deal:chat:start:"))
 async def deal_chat_start(call: CallbackQuery, state: FSMContext):
@@ -2586,7 +2654,10 @@ async def deal_chat_start(call: CallbackQuery, state: FSMContext):
     await state.set_state(DealChat.chatting)
     await state.update_data(order_id=order_id)
     await call.answer()
-    await call.message.answer(_t(user, "Chat opened.", "Чат відкрито."), reply_markup=kb_deal_chat_controls(order_id, user.language))
+    await call.message.answer(
+        _t(user, "Chat opened. Use the keyboard below.", "Чат відкрито. Користуйтеся клавіатурою нижче."),
+        reply_markup=kb_deal_chat_controls(user.language, is_moderator=is_moderator_telegram_id(call.from_user.id)),
+    )
 
 @router.callback_query(F.data.startswith("deal:chat:link:"))
 async def deal_chat_link_start(call: CallbackQuery, state: FSMContext):
@@ -2626,7 +2697,7 @@ async def deal_chat_link_start(call: CallbackQuery, state: FSMContext):
             f"\u041d\u0430\u0434\u0456\u0441\u043b\u0456\u0442\u044c \u043f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f \u043f\u043e \u0437\u0430\u043c\u043e\u0432\u043b\u0435\u043d\u043d\u044e #{order_id} \u043e\u0434\u043d\u0438\u043c \u043f\u043e\u0432\u0456\u0434\u043e\u043c\u043b\u0435\u043d\u043d\u044f\u043c.\n"
             "\u041f\u0456\u0434\u043a\u0430\u0437\u043a\u0430: \u043c\u043e\u0436\u043d\u0430 \u043d\u0430\u0434\u0441\u0438\u043b\u0430\u0442\u0438 \u043f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f \u043b\u0438\u0448\u0435 \u043d\u0430 Google Drive, Dropbox, OneDrive, Mega.",
         ),
-        reply_markup=kb_deal_chat_link_controls(order_id, user.language),
+        reply_markup=kb_deal_chat_link_controls(user.language, is_moderator=is_moderator_telegram_id(call.from_user.id)),
     )
 
 @router.callback_query(F.data.startswith("deal:chat:"))
@@ -2671,13 +2742,65 @@ async def deal_chat_link_message(message: Message, state: FSMContext):
         await message.answer(_t(user, "Deal not found.", "Угоду не знайдено."))
         return
 
-    if order.get("status") == "dispute" and not is_moderator_telegram_id(message.from_user.id):
-        await message.answer(_t(user, "Dispute is active. Go to the dispute.", "Спір активний. Перейдіть до спору."))
-        return
-
     text = (message.text or "").strip()
     if not text:
         await message.answer(_t(user, "Send the link as a single text message.", "Надішліть посилання одним текстовим повідомленням."))
+        return
+
+    labels = _chat_labels(user, is_moderator=is_moderator_telegram_id(message.from_user.id), link_mode=True)
+    if _match_chat_button(text, labels["menu"]):
+        await _open_main_menu_from_chat(message, state, user)
+        return
+    if _match_chat_button(text, labels["order"]):
+        await _open_order_menu_from_chat(message, state, user, order)
+        return
+    if _match_chat_button(text, labels["dispute"]):
+        await state.clear()
+        if is_moderator_telegram_id(message.from_user.id):
+            if order.get("status") != "dispute":
+                await message.answer(_t(user, "Dispute is not active.", "Спір не активний."), reply_markup=kb_deal_chat_link_controls(user.language, is_moderator=True))
+                return
+            await state.set_state(DisputeChat.chatting)
+            await state.update_data(order_id=order_id)
+            await _remove_chat_keyboard(message, user)
+            await message.answer(
+                _t(
+                    user,
+                    "Dispute opened. Final decision is made by a moderator.",
+                    "Спір відкрито. Остаточне рішення приймає модератор.",
+                ),
+                reply_markup=kb_dispute_controls(order_id, is_moderator=True, lang=user.language),
+            )
+            return
+        await state.set_state(DisputeOpenReason.waiting_text)
+        await state.update_data(order_id=order_id)
+        await _remove_chat_keyboard(message, user)
+        await message.answer(_t(user, "Describe the dispute reason in one message.", "Опишіть причину спору одним повідомленням."))
+        return
+    if _match_chat_button(text, labels["help"]) and not is_moderator_telegram_id(message.from_user.id):
+        await _notify_chat_help(message, user, order)
+        return
+    if _match_chat_button(text, labels["back_to_chat"]):
+        await state.set_state(DealChat.chatting)
+        await message.answer(
+            _t(user, "Chat reopened.", "Чат знову відкрито."),
+            reply_markup=kb_deal_chat_controls(user.language, is_moderator=is_moderator_telegram_id(message.from_user.id)),
+        )
+        return
+
+    if order.get("status") == "dispute" and not is_moderator_telegram_id(message.from_user.id):
+        await state.clear()
+        await state.set_state(DisputeChat.chatting)
+        await state.update_data(order_id=order_id)
+        await _remove_chat_keyboard(message, user)
+        await message.answer(
+            _t(
+                user,
+                "Dispute is active. You were moved to the dispute chat.",
+                "Спір активний. Вас переведено до чату спору.",
+            ),
+            reply_markup=kb_dispute_controls(order_id, is_moderator=False, lang=user.language),
+        )
         return
 
     if user.id not in (order.get("client_id"), order.get("editor_id")) and not is_moderator_telegram_id(message.from_user.id):
@@ -2697,7 +2820,7 @@ async def deal_chat_link_message(message: Message, state: FSMContext):
                 "\u0426\u0435 \u043d\u0435 \u0441\u0445\u043e\u0436\u0435 \u043d\u0430 \u043f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f. \u041d\u0430\u0434\u0456\u0441\u043b\u0456\u0442\u044c \u043f\u043e\u0432\u043d\u0435 \u043f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f.\n"
                 "\u041f\u0456\u0434\u043a\u0430\u0437\u043a\u0430: \u043c\u043e\u0436\u043d\u0430 \u043d\u0430\u0434\u0441\u0438\u043b\u0430\u0442\u0438 \u043f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f \u043b\u0438\u0448\u0435 \u043d\u0430 Google Drive, Dropbox, OneDrive, Mega.",
             ),
-            reply_markup=kb_deal_chat_link_controls(order_id, user.language),
+            reply_markup=kb_deal_chat_link_controls(user.language, is_moderator=is_moderator_telegram_id(message.from_user.id)),
         )
         return
 
@@ -2711,14 +2834,24 @@ async def deal_chat_link_message(message: Message, state: FSMContext):
                 "\u041f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f \u043c\u0430\u0454 \u0431\u0443\u0442\u0438 \u0437 \u0434\u043e\u0437\u0432\u043e\u043b\u0435\u043d\u043e\u0433\u043e \u0441\u0435\u0440\u0432\u0456\u0441\u0443.\n"
                 "\u0414\u043e\u0437\u0432\u043e\u043b\u0435\u043d\u0456: Google Drive, Dropbox, OneDrive, Mega.",
             ),
-            reply_markup=kb_deal_chat_link_controls(order_id, user.language),
+            reply_markup=kb_deal_chat_link_controls(user.language, is_moderator=is_moderator_telegram_id(message.from_user.id)),
         )
         return
 
-    recipient_id = order.get("editor_id") if user.id == order.get("client_id") else order.get("client_id")
-    recipient = await get_user_by_id(int(recipient_id))
-    if recipient:
-        await create_deal_message(order_id, user.id, user.role, text)
+    recipient_ids = []
+    if is_moderator_telegram_id(message.from_user.id):
+        if order.get("client_id"):
+            recipient_ids.append(int(order["client_id"]))
+        if order.get("editor_id"):
+            recipient_ids.append(int(order["editor_id"]))
+    else:
+        recipient_ids.append(int(order.get("editor_id") if user.id == order.get("client_id") else order.get("client_id")))
+
+    await create_deal_message(order_id, user.id, user.role, text)
+    for rid in recipient_ids:
+        recipient = await get_user_by_id(rid)
+        if not recipient or recipient.id == user.id:
+            continue
         await message.bot.send_message(
             recipient.telegram_id,
             _t(
@@ -2726,12 +2859,15 @@ async def deal_chat_link_message(message: Message, state: FSMContext):
                 f"Link for order #{order_id} from {_user_label(user)}\n{text}",
                 f"Посилання по замовленню #{order_id} від {_user_label(user)}\n{text}",
             ),
-            reply_markup=kb_deal_chat_controls(order_id, recipient.language),
+            reply_markup=kb_deal_chat_controls(recipient.language, is_moderator=is_moderator_telegram_id(recipient.telegram_id)),
         )
         await _activate_deal_chat_for_user(state, message.bot, recipient.telegram_id, order_id)
 
     await state.set_state(DealChat.chatting)
-    await message.answer(_t(user, "Link sent.", "Посилання надіслано."), reply_markup=kb_deal_chat_controls(order_id, user.language))
+    await message.answer(
+        _t(user, "Link sent.", "Посилання надіслано."),
+        reply_markup=kb_deal_chat_controls(user.language, is_moderator=is_moderator_telegram_id(message.from_user.id)),
+    )
 
 @router.message(DealChat.chatting)
 async def deal_chat_message(message: Message, state: FSMContext):
@@ -2750,16 +2886,72 @@ async def deal_chat_message(message: Message, state: FSMContext):
         await message.answer(_t(user, "Deal not found.", "Угоду не знайдено."))
         return
 
-    if order.get("status") == "dispute" and not is_moderator_telegram_id(message.from_user.id):
-        await message.answer(_t(user, "Dispute is active. Go to the dispute.", "Спір активний. Перейдіть до спору."))
-        return
-
     if user.id not in (order.get("client_id"), order.get("editor_id")) and not is_moderator_telegram_id(message.from_user.id):
         await message.answer(_t(user, "No access.", "Немає доступу."))
         return
 
     text = (message.text or "").strip()
     if not text:
+        return
+
+    labels = _chat_labels(user, is_moderator=is_moderator_telegram_id(message.from_user.id))
+    if _match_chat_button(text, labels["menu"]):
+        await _open_main_menu_from_chat(message, state, user)
+        return
+    if _match_chat_button(text, labels["order"]):
+        await _open_order_menu_from_chat(message, state, user, order)
+        return
+    if _match_chat_button(text, labels["send_link"]):
+        await state.set_state(DealChat.waiting_link)
+        await message.answer(
+            _t(
+                user,
+                f"Send a link for order #{order_id} in one message.\nHint: you can send links only to Google Drive, Dropbox, OneDrive, Mega.",
+                f"Надішліть посилання по замовленню #{order_id} одним повідомленням.\nПідказка: можна надсилати посилання лише на Google Drive, Dropbox, OneDrive, Mega.",
+            ),
+            reply_markup=kb_deal_chat_link_controls(user.language, is_moderator=is_moderator_telegram_id(message.from_user.id)),
+        )
+        return
+    if _match_chat_button(text, labels["dispute"]):
+        await state.clear()
+        if is_moderator_telegram_id(message.from_user.id):
+            if order.get("status") != "dispute":
+                await message.answer(_t(user, "Dispute is not active.", "Спір не активний."), reply_markup=kb_deal_chat_controls(user.language, is_moderator=True))
+                return
+            await state.set_state(DisputeChat.chatting)
+            await state.update_data(order_id=order_id)
+            await _remove_chat_keyboard(message, user)
+            await message.answer(
+                _t(
+                    user,
+                    "Dispute opened. Final decision is made by a moderator.",
+                    "Спір відкрито. Остаточне рішення приймає модератор.",
+                ),
+                reply_markup=kb_dispute_controls(order_id, is_moderator=True, lang=user.language),
+            )
+            return
+        await state.set_state(DisputeOpenReason.waiting_text)
+        await state.update_data(order_id=order_id)
+        await _remove_chat_keyboard(message, user)
+        await message.answer(_t(user, "Describe the dispute reason in one message.", "Опишіть причину спору одним повідомленням."))
+        return
+    if _match_chat_button(text, labels["help"]) and not is_moderator_telegram_id(message.from_user.id):
+        await _notify_chat_help(message, user, order)
+        return
+
+    if order.get("status") == "dispute" and not is_moderator_telegram_id(message.from_user.id):
+        await state.clear()
+        await state.set_state(DisputeChat.chatting)
+        await state.update_data(order_id=order_id)
+        await _remove_chat_keyboard(message, user)
+        await message.answer(
+            _t(
+                user,
+                "Dispute is active. You were moved to the dispute chat.",
+                "Спір активний. Вас переведено до чату спору.",
+            ),
+            reply_markup=kb_dispute_controls(order_id, is_moderator=False, lang=user.language),
+        )
         return
 
     if await _flag_and_hold_message(message, order_id, user, text):
@@ -2775,7 +2967,7 @@ async def deal_chat_message(message: Message, state: FSMContext):
                 "\u041f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f \u0432 \u0447\u0430\u0442\u0456 \u0437\u0430\u0431\u0440\u043e\u043d\u0435\u043d\u0456. \u0412\u0438\u043a\u043e\u0440\u0438\u0441\u0442\u043e\u0432\u0443\u0439\u0442\u0435 \u043c\u0435\u043d\u044e \u041d\u0430\u0434\u0456\u0441\u043b\u0430\u0442\u0438 \u043f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f.\n"
                 "\u041f\u0456\u0434\u043a\u0430\u0437\u043a\u0430: \u043c\u043e\u0436\u043d\u0430 \u043d\u0430\u0434\u0441\u0438\u043b\u0430\u0442\u0438 \u043f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f \u043b\u0438\u0448\u0435 \u043d\u0430 Google Drive, Dropbox, OneDrive, Mega.",
             ),
-            reply_markup=kb_deal_chat_controls(order_id, user.language),
+            reply_markup=kb_deal_chat_controls(user.language, is_moderator=is_moderator_telegram_id(message.from_user.id)),
         )
         return
 
@@ -2800,11 +2992,14 @@ async def deal_chat_message(message: Message, state: FSMContext):
                 f"Chat for order #{order_id} from {_user_label(user)}\n{text}",
                 f"Чат по замовленню #{order_id} від {_user_label(user)}\n{text}",
             ),
-            reply_markup=kb_deal_chat_controls(order_id, recipient.language),
+            reply_markup=kb_deal_chat_controls(recipient.language, is_moderator=is_moderator_telegram_id(recipient.telegram_id)),
         )
         await _activate_deal_chat_for_user(state, message.bot, recipient.telegram_id, order_id)
 
-    await message.answer(_t(user, "Message sent.", "Повідомлення надіслано."), reply_markup=kb_deal_chat_controls(order_id, user.language))
+    await message.answer(
+        _t(user, "Message sent.", "Повідомлення надіслано."),
+        reply_markup=kb_deal_chat_controls(user.language, is_moderator=is_moderator_telegram_id(message.from_user.id)),
+    )
 
 @router.callback_query(F.data.startswith("deal:dispute:exit:"))
 async def dispute_exit(call: CallbackQuery, state: FSMContext):
