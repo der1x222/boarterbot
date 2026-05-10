@@ -17,7 +17,7 @@ from app.handlers.orders import router as orders_router
 from app.handlers.verify import router as verify_router
 from app.handlers.moderation import router as moderation_router
 from app.handlers.settings import router as settings_router
-from app.order_repo import set_payment_status, set_reserved_amount, set_reserved_revision_amount, get_order_by_id, mark_revision_paid, get_pending_payments, update_payment_status_if_needed, cancel_order_if_payment_failed
+from app.order_repo import set_payment_status, set_reserved_amount, set_reserved_revision_amount, get_order_by_id, mark_revision_paid, get_pending_payments, update_payment_status_if_needed, cancel_order_if_payment_failed, expire_open_orders
 from app.payment_api import PaymentAPI
 
 # Configure logging
@@ -87,6 +87,52 @@ async def notify_payment_failure(order_id: int, is_revision: bool = False):
     except Exception as e:
         logger.error(f"Error notifying payment failure for order {order_id}: {e}")
 
+async def notify_order_expired(order_id: int):
+    try:
+        order = await get_order_by_id(order_id)
+        if not order:
+            return
+
+        client_id = order['client_id']
+        from app.models import get_user_by_id
+        client = await get_user_by_id(client_id)
+
+        message = texts.tr(
+            client.language if client else None,
+            f"⏰ Your order #{order_id} expired because no editor accepted it before the deadline.\n\n"
+            "Recommendations:\n"
+            "• Increase your budget\n"
+            "• Simplify the task\n"
+            "• Extend the deadline\n\n"
+            "Create a new order when you are ready.",
+            f"⏰ Ваше замовлення #{order_id} закінчилось, бо ніхто не прийняв його до дедлайну.\n\n"
+            "Рекомендації:\n"
+            "• Збільшіть бюджет\n"
+            "• Спростіть задачу\n"
+            "• Вкажіть більший термін\n\n"
+            "Створіть нове замовлення, коли будете готові."
+        )
+
+        if client and client.telegram_id:
+            try:
+                await bot.send_message(client.telegram_id, message)
+            except Exception as e:
+                logger.error(f"Failed to notify client {client_id} about expired order {order_id}: {e}")
+    except Exception as e:
+        logger.error(f"Error in notify_order_expired for order {order_id}: {e}")
+
+async def expire_order_deadlines():
+    while True:
+        try:
+            expired_orders = await expire_open_orders()
+            if expired_orders:
+                logger.info(f"Expired {len(expired_orders)} open order(s) by deadline")
+                for order in expired_orders:
+                    await notify_order_expired(order['id'])
+        except Exception as e:
+            logger.error(f"Error in order expiration task: {e}")
+        await asyncio.sleep(60)
+
 async def verify_pending_payments():
     """Periodically verify pending payments with LiqPay"""
     payment_api = PaymentAPI()
@@ -152,6 +198,14 @@ def verify_liqpay_signature(data: str, signature: str, private_key: str) -> bool
     expected_signature = base64.b64encode(hashlib.sha1(payload.encode("utf-8")).digest()).decode("utf-8")
     return expected_signature == signature
 
+
+def parse_liqpay_amount(amount) -> int | None:
+    try:
+        return int(round(float(amount) * 100))
+    except (TypeError, ValueError):
+        return None
+
+
 async def handle_payment_webhook(request):
     """Handle LiqPay payment webhook"""
     global cfg
@@ -171,10 +225,11 @@ async def handle_payment_webhook(request):
         # Decode payment data
         payment_info = json.loads(base64.b64decode(liqpay_data).decode("utf-8"))
         status = payment_info.get('status', '').lower()
-        order_id_str = payment_info.get('order_id', '')
-        amount = payment_info.get('amount', 0)
+        order_id_str = str(payment_info.get('order_id', '')).strip()
+        amount_minor = parse_liqpay_amount(payment_info.get('amount', 0))
+        currency = str(payment_info.get('currency', 'USD')).upper()
 
-        logger.info(f"Webhook received: order_id={order_id_str}, status={status}, amount={amount}")
+        logger.info(f"Webhook received: order_id={order_id_str}, status={status}, amount={amount_minor}, currency={currency}")
 
         if status not in ('success', 'sandbox'):
             logger.info(f"Webhook: Payment not successful for order {order_id_str}, status={status}")
@@ -182,10 +237,32 @@ async def handle_payment_webhook(request):
 
         # Determine if it's revision payment or main payment
         is_revision = order_id_str.startswith('revision_')
-        if is_revision:
-            actual_order_id = int(order_id_str.split('_', 1)[1])
-        else:
-            actual_order_id = int(order_id_str)
+        try:
+            if is_revision:
+                actual_order_id = int(order_id_str.split('_', 1)[1])
+            else:
+                actual_order_id = int(order_id_str)
+        except ValueError:
+            logger.warning(f"Webhook: Invalid order_id format: {order_id_str}")
+            return web.Response(status=400, text="Invalid order_id")
+
+        if amount_minor is None:
+            logger.warning(f"Webhook: Invalid payment amount for order {order_id_str}")
+            return web.Response(status=400, text="Invalid payment amount")
+
+        order = await get_order_by_id(actual_order_id)
+        if not order:
+            logger.error(f"Webhook: Order {actual_order_id} not found")
+            return web.Response(status=400, text="Order not found")
+
+        expected_amount_minor = order.get('revision_price_minor' if is_revision else 'agreed_price_minor') or 0
+        expected_currency = str(order.get('currency') or 'USD').upper()
+        if amount_minor != expected_amount_minor or currency != expected_currency:
+            logger.warning(
+                f"Webhook: Payment mismatch for order {actual_order_id}: "
+                f"received {amount_minor} {currency}, expected {expected_amount_minor} {expected_currency}"
+            )
+            return web.Response(status=400, text="Payment amount or currency mismatch")
 
         order = await get_order_by_id(actual_order_id)
         if not order:
@@ -269,8 +346,9 @@ async def main():
     app = web.Application()
     app.router.add_post('/webhook/payment', handle_payment_webhook)
 
-    # Start payment verification task
+    # Start background tasks
     asyncio.create_task(verify_pending_payments())
+    asyncio.create_task(expire_order_deadlines())
 
     # Run both polling and web server
     runner = web.AppRunner(app)

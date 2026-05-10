@@ -17,7 +17,7 @@ from app.keyboards import (
     kb_nav_menu_help,
 )
 from app.profile_repo import get_editor_profile
-from app.order_repo import list_open_orders, count_open_orders, list_orders_for_editor, list_deals_for_client, list_deals_for_editor, get_user_balance, list_balance_transactions, withdraw_balance, set_user_withdrawal_verification
+from app.order_repo import list_open_orders, count_open_orders, list_orders_for_editor, list_deals_for_client, list_deals_for_editor, get_user_balance, list_balance_transactions, create_withdrawal_request, set_user_withdrawal_verification
 from app.review_repo import list_received_reviews
 from app import texts
 
@@ -498,9 +498,9 @@ async def balance_withdraw_description(message: Message, state: FSMContext):
         )
         return
 
-    # Process withdrawal
-    ok = await withdraw_balance(user.id, amount_minor, description)
-    if not ok:
+    # Process withdrawal request and create a stored record
+    request_id = await create_withdrawal_request(user.id, amount_minor, description)
+    if not request_id:
         await state.clear()
         await send_clean_from_message(
             message,

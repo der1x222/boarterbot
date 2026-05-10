@@ -1213,8 +1213,8 @@ async def mod_send_message(message: Message, state: FSMContext):
                 # Refund to client - no balance change needed as money goes back to payment system
                 pass
             elif payment_status == "refunded_editor":
-                # Refund to editor - deduct from our balance if they were already paid
-                if order.get("payment_status") == "paid":
+                # Refund to editor - deduct from editor balance only if funds were already credited
+                if order.get("status") == "completed" or order.get("client_confirmed_completion"):
                     editor_id = order.get("editor_id")
                     amount = order.get("agreed_price_minor", 0)
                     if editor_id and amount > 0:

@@ -315,6 +315,14 @@ async def handle_withdraw(message):
 
     payment_details = parts[2]
     balance = await get_user_balance(user.id)
+    if not balance.get("verified_for_withdrawal", False):
+        await message.answer(texts.tr(
+            user.language,
+            "Withdrawal requires moderator verification first.",
+            "Вивід коштів вимагає спочатку верифікації модератором.",
+        ))
+        return
+
     if balance.get("virtual_balance_minor", 0) < amount_minor:
         await message.answer(texts.tr(user.language, "Insufficient balance", "Недостатньо коштів"))
         return

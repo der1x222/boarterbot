@@ -80,6 +80,26 @@ async def count_open_orders() -> int:
         row = await conn.fetchrow("SELECT COUNT(*) as count FROM orders WHERE status = 'open' AND editor_id IS NULL")
     return int(row['count']) if row else 0
 
+async def expire_open_orders() -> list[dict]:
+    p = pool()
+    async with p.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            UPDATE orders
+            SET status = 'expired',
+                updated_at = NOW()
+            WHERE id IN (
+                SELECT id FROM orders
+                WHERE status = 'open'
+                  AND editor_id IS NULL
+                  AND deadline_at IS NOT NULL
+                  AND deadline_at < NOW()
+            )
+            RETURNING id, client_id, title, deadline_at
+            """
+        )
+    return [dict(r) for r in rows]
+
 async def list_orders_for_editor(user_id: int, limit: int = 10) -> list[dict]:
     p = pool()
     async with p.acquire() as conn:
@@ -823,6 +843,9 @@ async def complete_order_and_credit_editor(order_id: int) -> bool:
 
 async def create_withdrawal_request(user_id: int, amount_minor: int, payment_details: str) -> int | None:
     """Create a withdrawal request, deduct from balance"""
+    if amount_minor <= 0 or not payment_details or not payment_details.strip():
+        return None
+
     fee_minor = amount_minor // 10  # 10% fee
     net_amount_minor = amount_minor - fee_minor
     total_deduct = amount_minor  # deduct the full amount requested
@@ -830,12 +853,16 @@ async def create_withdrawal_request(user_id: int, amount_minor: int, payment_det
     p = pool()
     async with p.acquire() as conn:
         async with conn.transaction():
-            # Check balance
+            # Check balance and verification status
             balance_row = await conn.fetchrow(
-                "SELECT virtual_balance_minor FROM users WHERE id = $1",
+                "SELECT virtual_balance_minor, verified_for_withdrawal FROM users WHERE id = $1",
                 user_id,
             )
-            if not balance_row or balance_row["virtual_balance_minor"] < total_deduct:
+            if (
+                not balance_row
+                or balance_row["virtual_balance_minor"] < total_deduct
+                or not balance_row["verified_for_withdrawal"]
+            ):
                 return None
 
             # Deduct from balance

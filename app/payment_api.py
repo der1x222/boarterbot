@@ -33,6 +33,11 @@ class PaymentAPI:
         digest = hashlib.sha1(payload.encode("utf-8")).digest()
         return base64.b64encode(digest).decode("utf-8")
 
+    def _normalize_order_id(self, payment_id: str) -> str:
+        if payment_id.startswith("liqpay_"):
+            return payment_id.split("_", 1)[1]
+        return payment_id
+
     async def create_payment_link(
         self,
         order_id: int,
@@ -80,11 +85,7 @@ class PaymentAPI:
         if payment_id.startswith("fallback_"):
             return False
 
-        order_id = payment_id
-        if payment_id.startswith("liqpay_"):
-            order_id = payment_id.split("_", 1)[1]
-        if order_id.startswith("revision_"):
-            order_id = order_id.split("_", 1)[1]
+        order_id = self._normalize_order_id(payment_id)
 
         payload = {
             "version": "3",
@@ -119,11 +120,7 @@ class PaymentAPI:
         if payment_id.startswith("fallback_"):
             return {"status": "pending", "type": "manual"}
 
-        order_id = payment_id
-        if payment_id.startswith("liqpay_"):
-            order_id = payment_id.split("_", 1)[1]
-        if order_id.startswith("revision_"):
-            order_id = order_id.split("_", 1)[1]
+        order_id = self._normalize_order_id(payment_id)
 
         payload = {
             "version": "3",
