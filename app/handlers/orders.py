@@ -26,6 +26,21 @@ def _t(user, en: str, ua: str) -> str:
 def _tl(lang: str | None, en: str, ua: str) -> str:
     return texts.tr(lang, en, ua)
 
+async def _notify_moderators_payment_request(bot, order_id: int, amount_text: str, request_type: str, client, editor):
+    moderators = await list_moderators()
+    for mod in moderators:
+        client_name = client.display_name or client.username or f"id:{client.telegram_id}"
+        editor_name = editor.display_name or editor.username or f"id:{editor.telegram_id}"
+        await bot.send_message(
+            mod.telegram_id,
+            f"💳 New payment request ({request_type})\n"
+            f"Order #{order_id}\n"
+            f"Amount: {amount_text}\n"
+            f"Client: {client_name} (ID: {client.id})\n"
+            f"Editor: {editor_name} (ID: {editor.id})\n"
+            f"Please review payment manually via moderator tools."
+        )
+
 # ---------- helpers for clean chat ----------
 
 async def safe_delete_message(message: Message | None):
@@ -1777,22 +1792,35 @@ async def proposal_accept(call: CallbackQuery):
         await set_payment_link(order_id, payment_link, payment_id or "")
 
     amount_label = f"{agreed_price_minor / 100:.2f} {order.get('currency') or 'USD'}"
-    if payment_link:
-        await call.message.answer(
-            _t(
-                user,
-                f"✅ Order accepted!\nYour editor is ready to start.\nAwaiting payment.\nTotal to pay: {amount_label}\n\nPay here: {payment_link}",
-                f"✅ Замовлення прийнято!\nВаш монтажер готовий почати.\nОчікуємо оплату.\nЗагальна сума до оплати: {amount_label}\n\nОплатіть тут: {payment_link}",
+    if await get_user_by_id(order.get("client_id")):
+        client = await get_user_by_id(order.get("client_id"))
+        editor = await get_user_by_id(editor_id)
+        if client and editor:
+            await _notify_moderators_payment_request(
+                call.bot,
+                order_id,
+                amount_label,
+                "Order payment",
+                client,
+                editor,
             )
+
+    # include moderator contact (first moderator) in the message when available
+    mods = await list_moderators()
+    mod_contact = ""
+    if mods:
+        m = mods[0]
+        mod_contact = m.display_name or (f"@{m.username}" if m.username else f"id:{m.telegram_id}")
+    contact_en = f" Moderator contact: {mod_contact}." if mod_contact else ""
+    contact_ua = f" Контакт модератора: {mod_contact}." if mod_contact else ""
+
+    await call.message.answer(
+        _t(
+            user,
+            f"✅ Order accepted!\nThe bot is currently in active development, so payment and payouts are processed through moderators. Order #{order_id} will be handled manually by the moderation team. A moderator will contact you to arrange payment." + contact_en,
+            f"✅ Замовлення прийнято!\nБот наразі перебуває у активній розробці, тому оплата обробляються через модерацію. Замовлення #{order_id} буде опрацьоване вручну командою модерації. Модератор зв'яжеться з вами для узгодження оплати." + contact_ua,
         )
-    else:
-        await call.message.answer(
-            _t(
-                user,
-                f"✅ Order accepted!\nYour editor is ready to start.\nAwaiting payment.\nTotal to pay: {amount_label}",
-                f"✅ Замовлення прийнято!\nВаш монтажер готовий почати.\nОчікуємо оплату.\nЗагальна сума до оплати: {amount_label}",
-            )
-        )
+    )
     await call.answer(_t(user, "Order accepted.", "Замовлення прийнято."), show_alert=True)
 
 @router.callback_query(F.data.startswith("proposal:reject:"))
@@ -2013,16 +2041,37 @@ async def revision_accept(call: CallbackQuery):
     if payment_link:
         await set_revision_payment_link(order_id, payment_link, payment_id or "")
 
-    # Notify client
     client = await get_user_by_id(order["client_id"])
-    if client:
-        price_text = f"{revision_price / 100:.2f} USD"
+    editor = await get_user_by_id(order["editor_id"])
+    amount_label = f"{revision_price / 100:.2f} {order.get('currency') or 'USD'}"
+    if client and editor:
+        await _notify_moderators_payment_request(
+            call.bot,
+            order_id,
+            amount_label,
+            "Revision payment",
+            client,
+            editor,
+        )
+        # include moderator contact when notifying the client
+        mods = await list_moderators()
+        mod_contact = ""
+        if mods:
+            m = mods[0]
+            mod_contact = m.display_name or (f"@{m.username}" if m.username else f"id:{m.telegram_id}")
+        contact_en = f" Moderator contact: {mod_contact}." if mod_contact else ""
+        contact_ua = f" Контакт модератора: {mod_contact}." if mod_contact else ""
+
         await call.bot.send_message(
             client.telegram_id,
-            _t(client, f"✅ Editor accepted your revision request for order #{order_id}.\n💰 Pay for revisions: {price_text}\n\n{payment_link}", f"✅ Монтажер прийняв ваш запит на правки до замовлення #{order_id}.\n💰 Сплатіть за правки: {price_text}\n\n{payment_link}")
+            _t(
+                client,
+                f"✅ Editor accepted your revision request for order #{order_id}.\nBecause the bot is currently in active development, revision payment is processed through moderators. Moderators have been notified and will handle it manually." + contact_en,
+                f"✅ Монтажер прийняв ваш запит на правки до замовлення #{order_id}.\nОскільки бот зараз знаходиться в активній розробці, оплата за правки обробляється через модерацію. Модератори отримали повідомлення і оброблять це вручну." + contact_ua,
+            ),
         )
 
-    await call.message.edit_text(_t(user, "✅ Revision accepted. Payment link sent to client.", "✅ Правки прийнято. Посилання на оплату надіслано замовнику."))
+    await call.message.edit_text(_t(user, "✅ Revision accepted. Moderators have been notified to process the payment.", "✅ Правки прийнято. Модератори отримали повідомлення для обробки оплати."))
     await call.answer()
 
 @router.callback_query(F.data.startswith("revision:counter:"))

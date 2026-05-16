@@ -12,7 +12,7 @@ from app.keyboards import (
     kb_profile,
 )
 from app.menu_utils import get_menu_markup_for_user
-from app.models import get_user_by_id, get_user_by_telegram_id, upsert_user
+from app.models import get_user_by_id, get_user_by_telegram_id, upsert_user, list_moderators
 from app.order_repo import create_withdrawal_request, get_user_balance, list_withdrawal_requests
 from app.profile_repo import (
     get_client_profile,
@@ -334,9 +334,18 @@ async def handle_withdraw(message):
         await message.answer(texts.tr(user.language, "Failed to create withdrawal request", "Не вдалося створити запит на виведення"))
         return
 
+    # include moderator contact in the confirmation message when available
+    mods = await list_moderators()
+    mod_contact = ""
+    if mods:
+        m = mods[0]
+        mod_contact = m.display_name or (f"@{m.username}" if m.username else f"id:{m.telegram_id}")
+    contact_en = f"\nModerator contact: {mod_contact}" if mod_contact else ""
+    contact_ua = f"\nКонтакт модератора: {mod_contact}" if mod_contact else ""
+
     text = texts.tr(
         user.language,
-        f"✅ Withdrawal request created!\nAmount: {amount:.2f} USD\nFee: {fee_minor / 100:.2f} USD\nYou will receive: {net_minor / 100:.2f} USD\n\nRequest ID: {request_id}\nStatus: Pending",
-        f"✅ Запит на виведення створено!\nСума: {amount:.2f} USD\nКомісія: {fee_minor / 100:.2f} USD\nОтримаєте: {net_minor / 100:.2f} USD\n\nID запиту: {request_id}\nСтатус: Очікує",
+        f"✅ Withdrawal request created!\nAmount: {amount:.2f} USD\nFee: {fee_minor / 100:.2f} USD\nYou will receive: {net_minor / 100:.2f} USD\n\nRequest ID: {request_id}\nStatus: Pending" + contact_en,
+        f"✅ Запит на виведення створено!\nСума: {amount:.2f} USD\nКомісія: {fee_minor / 100:.2f} USD\nОтримаєте: {net_minor / 100:.2f} USD\n\nID запиту: {request_id}\nСтатус: Очікує" + contact_ua,
     )
     await message.answer(text)

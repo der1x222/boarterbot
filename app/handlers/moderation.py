@@ -6,7 +6,7 @@ from app.models import get_user_by_telegram_id, get_user_by_id, get_users_by_nam
 from app.profile_repo import set_editor_verification
 from app.menu_utils import get_menu_markup_for_user
 from app.moderation_utils import is_moderator_telegram_id
-from app.order_repo import list_active_deals, get_order_by_id, set_payment_status, create_deal_message, add_to_balance
+from app.order_repo import list_active_deals, get_order_by_id, set_payment_status, create_deal_message, add_to_balance, list_payment_requests
 from app.moderation_repo import (
     list_pending_verifications,
     list_verified_editors,
@@ -31,6 +31,7 @@ from app.keyboards import (
     kb_verify_chat_reply,
     kb_verify_chat_controls,
     kb_deals_list,
+    kb_mod_payment_requests_list,
     kb_mod_deal_menu,
     kb_mod_deal_payment_menu,
 )
@@ -206,6 +207,22 @@ async def _show_disputes(call: CallbackQuery, offset: int, lang: str | None = No
         call,
         text,
         reply_markup=kb_mod_dispute_controls(int(d["id"]), offset, lang),
+    )
+
+async def _show_payment_requests(call: CallbackQuery, offset: int, lang: str | None = None):
+    items = await list_payment_requests(offset=offset, limit=10)
+    if not items:
+        await _safe_edit_or_send(
+            call,
+            texts.tr(lang, "💵 Payment requests\n\nNo pending payments.", "💵 Запити на оплату\n\nНемає запитів на оплату."),
+            reply_markup=kb_nav_menu_help(back="common:menu", lang=lang),
+        )
+        return
+
+    await _safe_edit_or_send(
+        call,
+        texts.tr(lang, "💵 Payment requests\n\nSelect an order to manage payment and chat.", "💵 Запити на оплату\n\nОберіть замовлення для керування оплатою та чатом."),
+        reply_markup=kb_mod_payment_requests_list(items, offset, lang),
     )
 
 async def _show_active_deals(call: CallbackQuery, lang: str | None = None):
@@ -633,6 +650,27 @@ async def mod_disputes(call: CallbackQuery):
     if not user:
         return
     await _show_disputes(call, 0, user.language)
+    await call.answer()
+
+@router.callback_query(F.data == "mod:payment_requests")
+async def mod_payment_requests(call: CallbackQuery):
+    user = await _ensure_moderator(call)
+    if not user:
+        return
+    await _show_payment_requests(call, 0, user.language)
+    await call.answer()
+
+@router.callback_query(F.data.startswith("mod:payment_requests:page:"))
+async def mod_payment_requests_page(call: CallbackQuery):
+    user = await _ensure_moderator(call)
+    if not user:
+        return
+    try:
+        offset = int(call.data.split(":")[-1])
+    except ValueError:
+        await call.answer(_t(user, "Invalid offset.", "Некоректний offset."), show_alert=True)
+        return
+    await _show_payment_requests(call, offset, user.language)
     await call.answer()
 
 @router.callback_query(F.data.startswith("mod:disputes:page:"))

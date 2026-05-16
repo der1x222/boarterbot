@@ -183,6 +183,24 @@ async def list_active_deals(limit: int = 20) -> list[dict]:
         )
     return [dict(r) for r in rows]
 
+async def list_payment_requests(offset: int = 0, limit: int = 10) -> list[dict]:
+    p = pool()
+    async with p.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, client_id, editor_id, title, currency, created_at, agreed_price_minor, payment_status,
+                   revision_status, revision_price_minor
+            FROM orders
+            WHERE (status = 'accepted' AND payment_status = 'pending')
+               OR revision_status = 'payment_pending'
+            ORDER BY created_at ASC
+            LIMIT $2 OFFSET $1
+            """,
+            offset,
+            limit,
+        )
+    return [dict(r) for r in rows]
+
 async def set_payment_status(order_id: int, payment_status: str) -> bool:
     p = pool()
     async with p.acquire() as conn:

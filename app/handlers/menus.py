@@ -174,34 +174,43 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
         await send_clean_from_call(
             call,
             state,
-            "🇺🇦 Українська\n\n" +
-            "Чому саме ми\n\n" +
-            "Ми створюємо не просто біржу, а безпечне середовище для роботи.\n" +
-            "Оплата проходить через платформу, тому кошти захищені для обох сторін.\n" +
-            "Система рейтингу сувора: кожне замовлення впливає на репутацію, що допомагає швидше знаходити надійних виконавців і замовників.\n" +
-            "Також працює модерація — вона контролює порушення, спам і допомагає вирішувати спірні ситуації.\n\n" +
-            "Як це працює\n\n" +
-            "Замовник створює замовлення, вказує задачу, бюджет і терміни.\n" +
-            "Монтажер відгукується та пропонує свої умови.\n" +
-            "Після вибору виконавця угода переходить у безпечний режим: спілкування відбувається через платформу, а оплата резервується.\n" +
-            "Після виконання роботи кошти переказуються виконавцю, а обидві сторони залишають відгук.",
+            "🇺🇦 Українська\n\n"
+            "**Чому саме ми**\n\n"
+            "Ми створюємо безпечне середовище для співпраці між замовниками та монтажерами: репутація, модерація і захищені платежі.\n\n"
+            "**Як проходить оплата (поточний, тимчасовий формат)**\n\n"
+            "1) Після узгодження роботи замовник бачить кнопку оплатити.\n"
+            "2) Наразі оплати обробляються вручну модераторами — бот надсилає модераторам запит з інфо про замовлення і контактами користувача.\n"
+            "3) Модератор контактує з вами, підтверджує платіж і обробляє переказ поза платформою або за домовленим способом.\n\n"
+            "**Як працює зв'язок**\n\n"
+            "- Ми надсилаємо модераторам: ім'я користувача, ID, суму і деталі замовлення або платіжні дані для виводу.\n"
+            "- Якщо у вас є @username — модератор може написати вам безпосередньо (посилання на профіль додається до повідомлення).\n\n"
+            "**Виведення коштів**\n\n"
+            "1) Монтажер переходить у розділ балансу і натискає «Вивести кошти».\n"
+            "2) Надсилає суму і платіжні дані (наприклад: PayPal, банківський рахунок, Crypto).\n"
+            "3) Запит створюється зі статусом «очікує», модератори отримують повідомлення з деталями і контактом.\n"
+            "4) Після перевірки модератор підтверджує і проводить виплату зовні платформи — потім статус оновлюється.\n\n"
+            "Модерація контролює безпеку і може допомогти у спірних ситуаціях.",
             reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
         )
     elif call.data == "common:about:en":
         await send_clean_from_call(
             call,
             state,
-            "🇬🇧 English\n\n" +
-            "Why choose us\n\n" +
-            "We’re not just a marketplace — we’re a secure work environment.\n" +
-            "Payments are handled through the platform, so funds are protected for both sides.\n" +
-            "Our rating system is strict: every order affects reputation, helping users find reliable clients and editors faster.\n" +
-            "We also have active moderation to handle violations, spam, and disputes.\n\n" +
-            "How it works\n\n" +
-            "A client creates an order with task details, budget, and deadline.\n" +
-            "An editor applies and offers their terms.\n" +
-            "Once selected, the deal moves into a secure mode: communication stays on the platform and payment is reserved.\n" +
-            "After the work is completed and approved, funds are released to the editor, and both sides leave a review.",
+            "🇬🇧 English\n\n"
+            "**Why choose us**\n\n"
+            "We provide a secure environment for clients and editors: reputation, moderation, and protected payments.\n\n"
+            "**How payments work (temporary manual flow)**\n\n"
+            "1) After the deal is agreed, the client sees a Pay button.\n"
+            "2) For now, payments are handled manually by moderators — the bot sends moderators a request with order info and your contact.\n"
+            "3) A moderator contacts you, confirms the payment details, and processes the transfer outside the platform or via the agreed channel.\n\n"
+            "**How communication happens**\n\n"
+            "- Moderators receive the user's name, ID, amount and order/payment details.\n"
+            "- If you have a Telegram @username, the moderator will have a direct link to message you.\n\n"
+            "**Withdrawals**\n\n"
+            "1) Editors go to Balance → Withdraw funds and submit amount + payment details (e.g., PayPal, Crypto).\n"
+            "2) A withdrawal request is created with status 'pending' and moderators are notified with details and contact.\n"
+            "3) After verification, a moderator approves and executes the payout externally; the request status is updated.\n\n"
+            "Moderators help ensure safety and resolve disputes if needed.",
             reply_markup=kb_nav_menu_help(back="common:menu", lang=user.language),
         )
     elif call.data in {"editor:find_orders", "editor:orders"} or call.data.startswith("editor:orders:page:"):
@@ -367,10 +376,12 @@ async def cb_menu(call: CallbackQuery, state: FSMContext):
     elif call.data == "balance:verify_request":
         # Send verification request to moderators
         moderators = await list_moderators()
+        # Prepare contact link for moderator convenience
+        contact = f"https://t.me/{user.username}" if (user.username and user.username.strip()) else f"tg://user?id={user.id}"
         for mod in moderators:
             await call.bot.send_message(
                 mod.telegram_id,
-                f"Verification request from user {user.display_name or user.username} (ID: {user.id}) for balance withdrawal."
+                f"Verification request from user {user.display_name or user.username} (ID: {user.id}) for balance withdrawal.\nContact: {contact}"
             )
         await send_clean_from_call(
             call,
@@ -509,12 +520,13 @@ async def balance_withdraw_description(message: Message, state: FSMContext):
         )
         return
 
-    # Notify moderators
+    # Notify moderators (include contact link)
+    contact = f"https://t.me/{user.username}" if (user.username and user.username.strip()) else f"tg://user?id={user.id}"
     moderators = await list_moderators()
     for mod in moderators:
         await message.bot.send_message(
             mod.telegram_id,
-            f"Withdrawal request: User {user.display_name or user.username} (ID: {user.id}) requested withdrawal of ${amount_minor / 100:.2f}\nDetails: {description}"
+            f"Withdrawal request: User {user.display_name or user.username} (ID: {user.id}) requested withdrawal of ${amount_minor / 100:.2f}\nDetails: {description}\nContact: {contact}"
         )
 
     await state.clear()

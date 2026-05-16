@@ -125,6 +125,7 @@ def kb_moderation_menu(lang: str | None = None) -> InlineKeyboardMarkup:
     b.button(text=_tr(lng, "🆕 New verifications", "🆕 Нові верифікації"), callback_data="mod:verifications")
     b.button(text=_tr(lng, "✅ Verified users", "✅ Верифіковані користувачі"), callback_data="mod:verified_users")
     b.button(text=_tr(lng, "⚠️ Disputes", "⚠️ Спори"), callback_data="mod:disputes")
+    b.button(text=_tr(lng, "💵 Payment requests", "💵 Запити на оплату"), callback_data="mod:payment_requests")
     b.button(text=_tr(lng, "💼 Active deals", "💼 Активні угоди"), callback_data="mod:active_deals")
     b.button(text=_tr(lng, "💬 Messages on review", "💬 Повідомлення на перевірці"), callback_data="mod:held_messages")
     b.button(text=_tr(lng, "🔎 Search", "🔎 Пошук"), callback_data="mod:search")
@@ -256,6 +257,24 @@ def kb_mod_verified_users_list(users: list[dict], offset: int, lang: str | None 
     nav_buttons.append(InlineKeyboardButton(text=_tr(lang, "Menu", "Меню"), callback_data="common:menu"))
     b.row(*nav_buttons)
     return b.as_markup()
+
+def kb_mod_payment_requests_list(orders: list[dict], offset: int, lang: str | None = None) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    for o in orders:
+        amount_minor = int(o.get("agreed_price_minor") if o.get("payment_status") == "pending" else o.get("revision_price_minor") or 0)
+        currency = o.get("currency") or "USD"
+        label_type = "Main" if o.get("payment_status") == "pending" else "Revision"
+        label_amount = f"{amount_minor / 100:.2f} {currency}"
+        label = f"#{o['id']} {label_type} {label_amount}"
+        b.button(text=label, callback_data=f"mod:deal:menu:{o['id']}")
+    nav_buttons = []
+    if offset > 0:
+        nav_buttons.append(InlineKeyboardButton(text=_tr(lang, "⬅️ Prev", "⬅️ Попередній"), callback_data=f"mod:payment_requests:page:{offset - 10}"))
+    nav_buttons.append(InlineKeyboardButton(text=_tr(lang, "▶️ Next", "▶️ Наступний"), callback_data=f"mod:payment_requests:page:{offset + 10}"))
+    nav_buttons.append(InlineKeyboardButton(text=_tr(lang, "Menu", "Меню"), callback_data="common:menu"))
+    b.row(*nav_buttons)
+    return b.as_markup()
+
 
 def kb_edit_editor_menu(lang: str | None = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
